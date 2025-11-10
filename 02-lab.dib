@@ -1,0 +1,537 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"name":"csharp"},{"name":"fsharp","languageName":"F#","aliases":["f#","fs"]},{"name":"html","languageName":"HTML"},{"name":"http","languageName":"HTTP"},{"name":"javascript","languageName":"JavaScript","aliases":["js"]},{"name":"mermaid","languageName":"Mermaid"},{"name":"pwsh","languageName":"PowerShell","aliases":["powershell"]},{"name":"value"}]}}
+
+#!markdown
+
+# Lab 02: Setting Up Your Azure Development Environment
+
+**Module:** Using Azure Cloud Shell / Visual Studio Code / Windows Terminal
+
+**Estimated time:** 45 minutes
+
+## Lab Objectives
+- Install essential Azure development tools
+- Configure Windows Terminal with custom profiles
+- Set up Visual Studio Code with Azure extensions
+- Initialize Azure Cloud Shell with persistent storage
+- Customize PowerShell profile for Azure workflows
+- Configure Git and SSH for version control
+
+## Prerequisites
+- Windows 10/11 with administrator access
+- Internet connection
+- Azure subscription
+- Basic familiarity with command-line interfaces
+
+#!markdown
+
+## Task 1: Install Core Tools Using winget
+
+Windows Package Manager (winget) provides a modern, scriptable way to install applications.
+We'll install PowerShell 7+, Azure CLI, Bicep, Git, GitHub CLI, Visual Studio Code, and Node.js.
+
+#!pwsh
+
+# Task 1: Install core development tools
+
+# Verify winget is available
+winget --version
+
+# TODO: Install PowerShell 7+ (cross-platform version)
+# Hint: winget install --id Microsoft.PowerShell --source winget
+
+
+# TODO: Install Azure CLI
+# Hint: winget install --id Microsoft.AzureCLI --source winget
+
+
+# TODO: Install Bicep CLI
+# Hint: winget install --id Microsoft.Bicep --source winget
+
+
+# TODO: Install Git
+# Hint: winget install --id Git.Git --source winget
+
+
+# TODO: Install GitHub CLI
+# Hint: winget install --id GitHub.cli --source winget
+
+
+# TODO: Install Visual Studio Code
+# Hint: winget install --id Microsoft.VisualStudioCode --source winget
+
+
+# TODO: Install Node.js LTS (required for some Azure extensions)
+# Hint: winget install --id OpenJS.NodeJS.LTS --source winget
+
+
+# TODO: Install .NET SDK (optional, for Azure Functions development)
+# Hint: winget install --id Microsoft.DotNet.SDK.9 --source winget
+
+#!markdown
+
+### Verification
+After installations complete, **close and reopen PowerShell** to refresh PATH, then verify:
+
+#!pwsh
+
+# Verify all tools installed correctly
+
+Write-Host "Tool Installation Status:" -ForegroundColor Cyan
+
+$tools = @(
+    @{Name='PowerShell 7+'; Command='pwsh --version'},
+    @{Name='Azure CLI'; Command='az version --output tsv'},
+    @{Name='Bicep'; Command='bicep --version'},
+    @{Name='Git'; Command='git --version'},
+    @{Name='GitHub CLI'; Command='gh --version'},
+    @{Name='VS Code'; Command='code --version'},
+    @{Name='Node.js'; Command='node --version'},
+    @{Name='.NET SDK'; Command='dotnet --version'}
+)
+
+foreach ($tool in $tools) {
+    try {
+        $version = Invoke-Expression $tool.Command 2>$null
+        Write-Host "  ✓ $($tool.Name): Installed" -ForegroundColor Green
+    } catch {
+        Write-Host "  ✗ $($tool.Name): Not found" -ForegroundColor Red
+    }
+}
+
+#!markdown
+
+## Task 2: Install Azure PowerShell Module
+
+The Az PowerShell module provides cmdlets for managing Azure resources.
+This is a large module and may take several minutes to install.
+
+#!pwsh
+
+# Task 2: Install Az PowerShell module
+
+# TODO: Install Az module for current user (no admin rights required)
+# Hint: Install-Module -Name Az -Repository PSGallery -Scope CurrentUser -Force
+
+
+# TODO: Verify Az module installed
+# Hint: Get-Module -Name Az -ListAvailable
+
+
+# TODO: Check version of Az module
+# Hint: (Get-Module Az -ListAvailable | Select-Object -First 1).Version
+
+#!markdown
+
+### Verification
+✓ Az module visible in Get-Module output  
+✓ Version 10.0 or higher  
+✓ Installation completed without errors
+
+**Note:** Az module contains 60+ sub-modules. Use `Get-Module Az.* -ListAvailable` to see all components.
+
+#!markdown
+
+## Task 3: Install Visual Studio Code Extensions
+
+VS Code extensions add Azure integration, syntax highlighting, and IntelliSense.
+These extensions significantly enhance productivity for Azure automation.
+
+#!pwsh
+
+# Task 3: Install VS Code extensions via CLI
+
+# TODO: Install PowerShell extension
+# Hint: code --install-extension ms-vscode.powershell
+
+# TODO: Install Azure CLI Tools extension
+# Hint: code --install-extension ms-vscode.azurecli
+
+# TODO: Install Azure Tools extension pack (contains 12 Azure-related extensions and enables Azure sign-in)
+# Hint: code --install-extension ms-vscode.vscode-node-azure-pack
+
+# TODO: Install Azure Resources extension (sign in and manage Azure resources)
+# Hint: code --install-extension ms-azuretools.vscode-azureresourcegroups
+
+# TODO: Install Bicep extension
+# Hint: code --install-extension ms-azuretools.vscode-bicep
+
+# TODO: Install Polyglot Notebooks extension (for .dib files)
+# Hint: code --install-extension ms-dotnettools.dotnet-interactive-vscode
+
+#!markdown
+
+### Verification
+Open VS Code and press `Ctrl+Shift+X` to view Extensions panel. Verify all extensions appear as installed.
+
+**Bonus:** Explore each extension's features:
+- **PowerShell**: Try F8 to run selected code
+- **Azure Resources**: Sign in to Azure (Ctrl+Shift+P > "Azure: Sign In")
+- **Bicep**: Create new .bicep file to see IntelliSense
+
+#!markdown
+
+## Task 4: Configure Git
+
+Set up Git with your identity and preferences for version-controlling Azure automation scripts.
+
+#!pwsh
+
+# Task 4: Git configuration
+
+# TODO: Set your name (replace with your actual name)
+# Hint: git config --global user.name "Your Name"
+
+
+# TODO: Set your email (replace with your email)
+# Hint: git config --global user.email "you@example.com"
+
+
+# TODO: Configure line endings for Windows
+# Hint: git config --global core.autocrlf true
+
+
+# TODO: Set VS Code as default Git editor
+# Hint: git config --global core.editor "code --wait"
+
+
+# TODO: View all Git configuration
+# Hint: git config --list
+
+#!markdown
+
+### Verification
+✓ `git config user.name` returns your name  
+✓ `git config user.email` returns your email  
+✓ Configuration saved to `~/.gitconfig`
+
+#!markdown
+
+## Task 5: Generate SSH Keys
+
+SSH keys enable secure, password-less authentication to Azure VMs and Git repositories.
+
+#!pwsh
+
+# Task 5: SSH key generation
+
+# TODO: Generate RSA key pair (press Enter to accept defaults)
+# Hint: ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+
+
+# TODO: View your public key
+# Hint: Get-Content ~/.ssh/id_rsa.pub
+
+
+# TODO: Copy public key to clipboard (Windows)
+# Hint: Get-Content ~/.ssh/id_rsa.pub | Set-Clipboard
+
+#!markdown
+
+### Verification
+✓ Key files exist: `~/.ssh/id_rsa` (private) and `~/.ssh/id_rsa.pub` (public)  
+✓ Public key copied to clipboard  
+✓ Public key starts with "ssh-rsa"
+
+**Security Note:** Never share your private key (`id_rsa`). Only share the public key (`.pub` file).
+
+**Usage:**
+- Add to Azure VM during creation for SSH access
+- Add to GitHub/Azure DevOps for repository authentication
+
+#!markdown
+
+## Task 6: Set Up Azure Cloud Shell
+
+Azure Cloud Shell provides a browser-based shell with Azure tools pre-installed.
+First-time setup creates a storage account for persistent file storage.
+
+#!markdown
+
+### Manual Steps (Cannot be fully automated in notebook)
+
+1. **Open Azure Cloud Shell:**
+   - Navigate to https://shell.azure.com
+   - Or click Cloud Shell icon (>_) in Azure Portal
+
+2. **Choose Shell Experience:**
+   - Select **PowerShell** or **Bash** (choose PowerShell for this course)
+
+3. **Create Storage:**
+   - Click "Create storage" when prompted
+   - Storage account and file share created automatically
+   - Takes 1-2 minutes
+
+4. **Verify Cloud Shell:**
+   - Run: `Get-AzContext` to see authenticated session
+   - Run: `Get-ChildItem CloudDrive:` to see persistent storage
+
+5. **Test Persistence:**
+   - Create test file: `"Test" | Out-File CloudDrive:\test.txt`
+   - Close Cloud Shell, reopen, verify file exists
+
+#!markdown
+
+### Verification
+✓ Cloud Shell accessible from browser  
+✓ Storage account created in your subscription  
+✓ File share mounted at CloudDrive:  
+✓ Azure context shows authenticated subscription  
+✓ Test file persists across sessions
+
+**Pro Tip:** Access Cloud Shell from VS Code using Azure Account extension (Ctrl+Shift+P > "Azure: Open PowerShell in Cloud Shell")
+
+#!markdown
+
+## Task 7: Customize PowerShell Profile
+
+PowerShell profiles run at startup, allowing you to customize your environment.
+Add functions, aliases, and module imports to streamline Azure workflows.
+
+#!pwsh
+
+# Task 7: Create PowerShell profile
+
+# TODO: Check if profile exists
+# Hint: Test-Path $PROFILE
+
+
+# TODO: Create profile directory if it doesn't exist
+# Hint: if (-not (Test-Path (Split-Path $PROFILE))) { New-Item -ItemType Directory -Path (Split-Path $PROFILE) -Force }
+
+
+# TODO: Create profile file with sample content
+$profileContent = @'
+# PowerShell Profile for Azure Automation
+
+# Import Azure modules on startup (optional - slows startup)
+# Import-Module Az.Accounts -ErrorAction SilentlyContinue
+
+# Custom function: Check Azure connection status
+function Get-AzureStatus {
+    $context = Get-AzContext
+    if ($context) {
+        Write-Host "✓ Connected to Azure" -ForegroundColor Green
+        Write-Host "  Account: $($context.Account)" -ForegroundColor Cyan
+        Write-Host "  Subscription: $($context.Subscription.Name)" -ForegroundColor Cyan
+    } else {
+        Write-Host "✗ Not connected to Azure" -ForegroundColor Red
+        Write-Host "  Run: Connect-AzAccount" -ForegroundColor Yellow
+    }
+}
+
+# Aliases
+Set-Alias -Name azstatus -Value Get-AzureStatus
+
+# Welcome message
+Write-Host "Azure PowerShell Profile Loaded" -ForegroundColor Green
+Write-Host "Type 'azstatus' to check Azure connection`n" -ForegroundColor DarkGray
+'@
+
+# TODO: Write content to profile
+# Hint: $profileContent | Out-File -FilePath $PROFILE -Encoding utf8
+
+
+# TODO: View profile content
+# Hint: Get-Content $PROFILE
+
+#!pwsh
+
+# Test profile by sourcing it
+
+# TODO: Reload profile (dot-source)
+# Hint: . $PROFILE
+
+
+# TODO: Test custom function
+# Hint: azstatus
+
+#!markdown
+
+### Verification
+✓ Profile file created at `$PROFILE` location  
+✓ Profile loads without errors  
+✓ Custom function `Get-AzureStatus` available  
+✓ Alias `azstatus` works  
+✓ Welcome message appears on new PowerShell sessions
+
+**Customization Ideas:**
+- Add more aliases: `Set-Alias -Name k -Value kubectl`
+- Set default parameters: `$PSDefaultParameterValues['*Az*:Subscription'] = 'mySubId'`
+- Custom prompts: Modify `function prompt { }` for custom PS prompt
+- Import modules: Add frequently used modules to profile
+
+**Edit Profile:** `code $PROFILE`
+
+#!markdown
+
+## Task 8: Configure Windows Terminal (Optional)
+
+Windows Terminal provides a modern command-line experience with tabs and panes.
+Customize with profiles, themes, and keybindings.
+
+#!markdown
+
+### Manual Configuration Steps
+
+1. **Open Settings:**
+   - Launch Windows Terminal
+   - Press `Ctrl+,` or click ⌄ dropdown > Settings
+
+2. **Create Custom Profile:**
+   - Click "Add a new profile" > "New empty profile"
+   - Name: "Azure PowerShell"
+   - Command line: `pwsh.exe -NoLogo`
+   - Starting directory: `C:\AzureProjects` (or your preferred path)
+   - Icon: Choose Azure icon or custom image
+
+3. **Set Default Shell:**
+   - Startup tab > Default profile > Select "PowerShell 7"
+
+4. **Customize Appearance:**
+   - Select profile > Appearance
+   - Color scheme: Try "One Half Dark" or "Solarized Dark"
+   - Font face: "Cascadia Code" or "Cascadia Mono"
+   - Font size: 12 or preferred size
+
+5. **Configure Keybindings:**
+   - Actions tab > Add custom keybindings
+   - Useful additions:
+     - Split pane vertically: `Alt+Shift+Plus`
+     - Split pane horizontally: `Alt+Shift+Minus`
+     - Close pane: `Ctrl+Shift+W`
+
+6. **Test Features:**
+   - New tab: `Ctrl+Shift+T`
+   - Split pane: `Alt+Shift+Plus` (vertical) or `Alt+Shift+Minus` (horizontal)
+   - Navigate panes: `Alt+Arrow keys`
+   - Zoom: `Ctrl+Scroll wheel`
+
+#!markdown
+
+### Verification
+✓ Windows Terminal installed and launches  
+✓ PowerShell 7 set as default profile  
+✓ Custom Azure PowerShell profile created  
+✓ Color scheme and font customized  
+✓ Tabs and panes work correctly
+
+**Advanced:** Export your settings.json to backup configuration or share with team.
+
+#!markdown
+
+## Task 9: Clone Course Repository (Optional)
+
+If the course has a companion repository with sample scripts and templates, clone it now.
+
+#!pwsh
+
+# Task 9: Clone repository
+
+# TODO: Create projects directory
+# Hint: New-Item -ItemType Directory -Path C:\AzureProjects -Force
+
+
+# TODO: Navigate to projects directory
+# Hint: Set-Location C:\AzureProjects
+
+
+# TODO: Clone repository (replace with actual repository URL)
+# Example: git clone https://github.com/alexandair/az-course-labs.git
+
+
+# TODO: Open repository in VS Code
+# Example: code az-course-labs
+
+#!markdown
+
+### Verification
+✓ Projects directory created  
+✓ Repository cloned successfully  
+✓ Repository opens in VS Code  
+✓ Git integration visible in VS Code (Source Control panel)
+
+#!markdown
+
+## Task 10: Install WSL and Docker (Optional Advanced Setup)
+
+For advanced scenarios like containerized Azure Functions or Linux-based development.
+
+#!pwsh
+
+# Task 10: Install WSL and Docker
+
+# TODO: Install WSL (Windows Subsystem for Linux) - REQUIRES RESTART
+# Hint: wsl --install
+
+
+# TODO: After restart, verify WSL
+# Hint: wsl --status
+
+
+# TODO: Install Docker Desktop using winget
+# Hint: winget install --id Docker.DockerDesktop --source winget
+
+
+# Note: Docker Desktop requires WSL 2 backend and system restart
+
+#!markdown
+
+### Verification
+✓ WSL installed (check with `wsl --status`)  
+✓ Default Linux distribution installed (Ubuntu)  
+✓ Docker Desktop installed  
+✓ Docker running (check with `docker --version`)
+
+**Usage:**
+- Test Docker: `docker run hello-world`
+- Access Linux: `wsl` command opens Linux shell
+- VS Code Remote-WSL: Develop in Linux environment from Windows
+
+**Note:** This step is optional but valuable for containerization and cross-platform development.
+
+#!markdown
+
+## Lab Summary
+
+**Congratulations! Your Azure development environment is fully configured.**
+
+### What You Accomplished:
+✓ Installed PowerShell 7+, Azure CLI, Bicep, Git, VS Code, Node.js via winget  
+✓ Installed Az PowerShell module from PowerShell Gallery  
+✓ Added seven essential Azure extensions to VS Code  
+✓ Configured Git with user identity and preferences  
+✓ Generated SSH keys for secure authentication  
+✓ Initialized Azure Cloud Shell with persistent storage  
+✓ Created custom PowerShell profile with helper functions  
+✓ Configured Windows Terminal with custom profiles (optional)  
+✓ Cloned course repository (optional)  
+✓ Installed WSL and Docker (optional)  
+
+### Environment Readiness Checklist:
+- ✓ `pwsh --version` shows PowerShell 7.x
+- ✓ `az version` shows Azure CLI version
+- ✓ `bicep --version` shows Bicep CLI version
+- ✓ `Get-Module Az -ListAvailable` shows Az module
+- ✓ VS Code launches with Azure extensions
+- ✓ Windows Terminal has custom profiles
+- ✓ Azure Cloud Shell accessible and configured
+- ✓ Git configured with user credentials
+- ✓ SSH keys generated for VM and repository access
+
+### Recommended Next Steps:
+1. **Explore VS Code:** Try creating a .bicep file to see IntelliSense
+2. **Test Cloud Shell:** Run Azure commands from shell.azure.com
+3. **Customize Profile:** Add your own functions and aliases to `$PROFILE`
+4. **Practice Git:** Initialize a test repository and commit some files
+5. **Windows Terminal:** Experiment with split panes and custom themes
+
+### Troubleshooting:
+- **Tool not found after install:** Restart PowerShell to refresh PATH
+- **Az module import slow:** Normal - large module with 60+ sub-modules
+- **VS Code extensions not appearing:** Reload VS Code window (Ctrl+Shift+P > "Reload Window")
+- **Cloud Shell storage creation failed:** Check subscription permissions
+- **Profile not loading:** Check syntax errors with `code $PROFILE`
+
+**You're now ready for Module 3: Deep dive into Azure PowerShell and Azure CLI!**

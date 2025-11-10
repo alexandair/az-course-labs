@@ -1,0 +1,656 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"name":"csharp"},{"name":"fsharp","languageName":"F#","aliases":["f#","fs"]},{"name":"html","languageName":"HTML"},{"name":"http","languageName":"HTTP"},{"name":"javascript","languageName":"JavaScript","aliases":["js"]},{"name":"mermaid","languageName":"Mermaid"},{"name":"pwsh","languageName":"PowerShell","aliases":["powershell"]},{"name":"value"}]}}
+
+#!pwsh
+
+# Lab Setup - Verify Azure CLI Environment
+Write-Host "=== Lab 03-2 Environment Verification ===" -ForegroundColor Cyan
+
+# Check Azure CLI
+try {
+    $azVersion = az version --output json | ConvertFrom-Json
+    Write-Host "Azure CLI: $($azVersion.'azure-cli') ✓" -ForegroundColor Green
+} catch {
+    Write-Host "Azure CLI: Not found or not in PATH ✗" -ForegroundColor Red
+    Write-Host "Install from: https://aka.ms/installazurecliwindows" -ForegroundColor Yellow
+}
+
+# Check PowerShell version
+$psVersion = $PSVersionTable.PSVersion
+Write-Host "PowerShell: $psVersion $(if ($psVersion.Major -ge 7) { '✓' } else { '✗ (need 7+)' })" -ForegroundColor $(if ($psVersion.Major -ge 7) { "Green" } else { "Red" })
+
+# Check Azure login status
+$accountInfo = az account show 2>$null
+if ($accountInfo) {
+    $account = $accountInfo | ConvertFrom-Json
+    Write-Host "Azure Login: Connected to $($account.name) ✓" -ForegroundColor Green
+} else {
+    Write-Host "Azure Login: Not connected ✗" -ForegroundColor Yellow
+    Write-Host "Run: az login" -ForegroundColor Gray
+}
+
+Write-Host "`nProfile Location: $PROFILE" -ForegroundColor Yellow
+Write-Host "Profile Exists: $(Test-Path $PROFILE)" -ForegroundColor Gray
+
+Write-Host "`nEnvironment verification complete!`n" -ForegroundColor Cyan
+
+#!markdown
+
+## Task 1: Configure Azure CLI Tab Completion
+
+Azure CLI supports tab completion in PowerShell through argument completers. This provides IntelliSense for az commands, subcommands, and parameters.
+
+**What you'll do:**
+- Understand the Register-ArgumentCompleter mechanism
+- Add tab completion scriptblock to your profile
+- Test completion with various az commands
+- Verify persistence across sessions
+
+**How it works:** Azure CLI provides a built-in completion engine that PowerShell can query using environment variables.
+
+#!pwsh
+
+# Task 1: Azure CLI Tab Completion Setup
+
+Write-Host "=== Task 1: CLI Tab Completion Configuration ===" -ForegroundColor Cyan
+
+# The tab completion scriptblock for Azure CLI
+$tabCompletionCode = @'
+
+#region Azure CLI Tab Completion
+
+# Enable Azure CLI tab completion in PowerShell
+Register-ArgumentCompleter -Native -CommandName az -ScriptBlock {
+    param($commandName, $wordToComplete, $cursorPosition)
+    
+    # Set up environment variables for Azure CLI completion
+    $env:ARGCOMPLETE_USE_TEMPFILES = 1
+    $env:_ARGCOMPLETE_STDOUT_FILENAME = New-TemporaryFile
+    $env:COMP_LINE = $wordToComplete
+    $env:COMP_POINT = $cursorPosition
+    $env:_ARGCOMPLETE = 1
+    $env:_ARGCOMPLETE_SUPPRESS_SPACE = 0
+    $env:_ARGCOMPLETE_IFS = "`n"
+    $env:_ARGCOMPLETE_SHELL = 'powershell'
+    
+    # Run Azure CLI completion
+    az 2>&1 | Out-Null
+    
+    # Parse completion results
+    Get-Content $env:_ARGCOMPLETE_STDOUT_FILENAME |
+        Sort-Object -Unique |
+        ForEach-Object {
+            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+        }
+    
+    # Cleanup
+    Remove-Item $env:_ARGCOMPLETE_STDOUT_FILENAME -ErrorAction SilentlyContinue
+    Remove-Item Env:\_ARGCOMPLETE, Env:\ARGCOMPLETE_USE_TEMPFILES, Env:\_ARGCOMPLETE_STDOUT_FILENAME, 
+                Env:\COMP_LINE, Env:\COMP_POINT, Env:\_ARGCOMPLETE_SUPPRESS_SPACE, 
+                Env:\_ARGCOMPLETE_IFS, Env:\_ARGCOMPLETE_SHELL -ErrorAction SilentlyContinue
+}
+
+#endregion
+'@
+
+Write-Host "Tab Completion Scriptblock:" -ForegroundColor Yellow
+Write-Host $tabCompletionCode -ForegroundColor Gray
+
+# TODO: Add to profile
+Write-Host "`nAdding tab completion to profile..." -ForegroundColor Yellow
+if (Test-Path $PROFILE) {
+    # Check if already exists
+    $profileContent = Get-Content $PROFILE -Raw
+    if ($profileContent -notmatch 'Register-ArgumentCompleter.*-CommandName az') {
+        Add-Content -Path $PROFILE -Value $tabCompletionCode
+        Write-Host "✓ Tab completion added to profile" -ForegroundColor Green
+    } else {
+        Write-Host "✓ Tab completion already in profile" -ForegroundColor Green
+    }
+} else {
+    Write-Host "Profile doesn't exist - creating..." -ForegroundColor Yellow
+    New-Item -Path $PROFILE -ItemType File -Force | Out-Null
+    Add-Content -Path $PROFILE -Value $tabCompletionCode
+    Write-Host "✓ Profile created with tab completion" -ForegroundColor Green
+}
+
+# Load tab completion in current session
+Write-Host "`nLoading tab completion in current session..." -ForegroundColor Yellow
+Invoke-Expression $tabCompletionCode
+Write-Host "✓ Tab completion active in current session" -ForegroundColor Green
+
+Write-Host "`n** PRACTICE REQUIRED **" -ForegroundColor Cyan
+Write-Host "Open a PowerShell terminal and try:" -ForegroundColor Yellow
+Write-Host "  az storage account <Tab>      - see subcommands" -ForegroundColor Gray
+Write-Host "  az vm create --<Tab>          - see parameters" -ForegroundColor Gray
+Write-Host "  az group list --output <Tab>  - see output formats" -ForegroundColor Gray
+
+Write-Host "`n✓ Task 1 Complete!" -ForegroundColor Green
+
+#!markdown
+
+## Task 2: Master Azure CLI Output Formats
+
+Azure CLI supports multiple output formats optimized for different scenarios. Understanding when to use each format improves your automation workflows.
+
+**Output Formats:**
+- **table**: Human-readable columns (default for interactive)
+- **json**: Default format, full object details for scripting
+- **yaml**: Structured hierarchical format
+- **tsv**: Tab-separated values for parsing
+- **jsonc**: Colorized JSON for readability
+
+**Key Concept:** Use `--output` (or `-o`) with any az command to change format.
+
+#!pwsh
+
+# Task 2: Explore Output Formats
+
+Write-Host "=== Task 2: Azure CLI Output Formats ===" -ForegroundColor Cyan
+
+# Ensure logged in to Azure
+$accountCheck = az account show 2>$null
+if (-not $accountCheck) {
+    Write-Host "Not logged in to Azure. Running az login..." -ForegroundColor Yellow
+    az login --output table | Out-Default
+}
+
+Write-Host "`nRunning same command with different output formats...`n" -ForegroundColor Yellow
+
+# TODO: Compare output formats using resource groups
+Write-Host "1. TABLE FORMAT (human-readable):" -ForegroundColor Cyan
+az group list --output table | Out-Default
+
+Write-Host "`n2. JSON FORMAT (default, for scripting):" -ForegroundColor Cyan
+$jsonOutput = az group list --output json
+$jsonOutput | ConvertFrom-Json | Select-Object -First 2 | ConvertTo-Json | Out-Default
+
+Write-Host "`n3. YAML FORMAT (structured hierarchy):" -ForegroundColor Cyan
+az group list --output yaml | Select-Object -First 15 | Out-Default
+
+Write-Host "`n4. TSV FORMAT (tab-separated for parsing):" -ForegroundColor Cyan
+az group list --output tsv --query "[].{Name:name, Location:location}" | Select-Object -First 5 | Out-Default
+
+Write-Host "`n5. JSONC FORMAT (colorized JSON):" -ForegroundColor Cyan
+az group list --output jsonc --query "[0]" | Out-Default
+
+# Create comparison table
+Write-Host "`n=== Output Format Comparison ===" -ForegroundColor Yellow
+$comparison = @(
+    [PSCustomObject]@{Format='table';Use='Interactive viewing, quick scans';Pros='Easy to read';Cons='Not parseable'}
+    [PSCustomObject]@{Format='json';Use='Scripting, automation';Pros='Full details, parseable';Cons='Verbose for humans'}
+    [PSCustomObject]@{Format='yaml';Use='Configuration files';Pros='Structured, readable';Cons='Not widely used'}
+    [PSCustomObject]@{Format='tsv';Use='Importing to Excel/CSV';Pros='Easy to parse';Cons='Limited structure'}
+    [PSCustomObject]@{Format='jsonc';Use='Interactive JSON viewing';Pros='Colorized, readable';Cons='Not for scripting'}
+)
+$comparison | Format-Table -AutoSize -Wrap | Out-Default
+
+Write-Host "`n** REFLECTION QUESTIONS **" -ForegroundColor Cyan
+Write-Host "Q1: Which format would you use in a PowerShell script to parse storage accounts?" -ForegroundColor Yellow
+Write-Host "A1: json (default) - provides full object data that ConvertFrom-Json can parse" -ForegroundColor Gray
+Write-Host "`nQ2: Which format is best for quickly checking if a resource exists?" -ForegroundColor Yellow
+Write-Host "A2: table - quick visual scan, or tsv with simple parsing" -ForegroundColor Gray
+Write-Host "`nQ3: When would you use yaml output?" -ForegroundColor Yellow
+Write-Host "A3: When copying structure to config files, or for hierarchical data visualization" -ForegroundColor Gray
+
+Write-Host "`n✓ Task 2 Complete!" -ForegroundColor Green
+
+#!markdown
+
+## Task 3: Master JMESPath Queries
+
+JMESPath is a query language for JSON that Azure CLI uses with the `--query` parameter. It allows powerful filtering and reshaping of results without additional tools.
+
+**Common JMESPath Patterns:**
+- `[].property` - Extract single property from all items
+- `[?condition]` - Filter items by condition
+- `{Name:name, Location:location}` - Project specific fields
+- `[].[name, location]` - Array projection
+- `length(@)` - Count items
+
+**Practice:** JMESPath works on the JSON output before formatting, so combine with `--output` for readable results.
+
+#!pwsh
+
+# Task 3: JMESPath Query Mastery
+
+Write-Host "=== Task 3: JMESPath Queries ===" -ForegroundColor Cyan
+
+Write-Host "`nJMESPath Query Examples:`n" -ForegroundColor Yellow
+
+# Example 1: Extract specific properties
+Write-Host "1. Extract Name and Location from all resource groups:" -ForegroundColor Cyan
+Write-Host "   Command: az group list --query '[].{Name:name, Location:location}' -o table" -ForegroundColor Gray
+az group list --query '[].{Name:name, Location:location}' -o table | Out-Default
+
+# Example 2: Filter by condition
+Write-Host "`n2. Filter resource groups in specific location (eastus):" -ForegroundColor Cyan
+Write-Host "   Command: az group list --query ""[?location=='eastus']"" -o table" -ForegroundColor Gray
+az group list --query "[?location=='eastus']" -o table | Out-Default
+
+# Example 3: Filter and project
+Write-Host "`n3. Get names of resource groups in eastus:" -ForegroundColor Cyan
+Write-Host "   Command: az group list --query ""[?location=='eastus'].name"" -o tsv" -ForegroundColor Gray
+az group list --query "[?location=='eastus'].name" -o tsv | Out-Default
+
+# TODO: Progressive Practice Exercises
+Write-Host "`n=== PRACTICE EXERCISES ===" -ForegroundColor Yellow
+Write-Host "(Try these in a PowerShell terminal)`n" -ForegroundColor Gray
+
+Write-Host "Exercise 1: Get all storage account names in westus" -ForegroundColor Cyan
+Write-Host "Hint: az storage account list --query ""[?location=='westus'].name"" -o tsv`n" -ForegroundColor Gray
+
+Write-Host "Exercise 2: List VMs with their OS type" -ForegroundColor Cyan
+Write-Host "Hint: az vm list --query '[].{Name:name, OS:storageProfile.osDisk.osType}' -o table`n" -ForegroundColor Gray
+
+Write-Host "Exercise 3: Count storage accounts by location" -ForegroundColor Cyan
+Write-Host "Hint: First get unique locations, then count per location" -ForegroundColor Gray
+Write-Host "      az storage account list --query '[].location' | ConvertFrom-Json | Group-Object`n" -ForegroundColor Gray
+
+Write-Host "Exercise 4: Get VMs with specific tag" -ForegroundColor Cyan
+Write-Host "Hint: az vm list --query ""[?tags.Environment=='Production'].name"" -o tsv`n" -ForegroundColor Gray
+
+# JMESPath Syntax Reference
+Write-Host "=== JMESPath Quick Reference ===" -ForegroundColor Yellow
+$jmesRef = @"
+┌──────────────────────────┬────────────────────────────────────────────┐
+│ Pattern                  │ Description                                 │
+├──────────────────────────┼────────────────────────────────────────────┤
+│ [].property              │ Extract property from all array items       │
+│ [0].property             │ Extract property from first item            │
+│ [?condition]             │ Filter items matching condition             │
+│ {Key:value}              │ Project/rename properties                   │
+│ [].[prop1, prop2]        │ Array projection (multiple properties)      │
+│ length(@)                │ Count items in array                        │
+│ sort_by(@, &property)    │ Sort array by property                      │
+│ max_by(@, &property)     │ Get item with max value                     │
+│ contains(prop, 'value')  │ Check if property contains value            │
+└──────────────────────────┴────────────────────────────────────────────┘
+"@
+Write-Host $jmesRef -ForegroundColor Gray
+
+Write-Host "`n✓ Task 3 Complete!" -ForegroundColor Green
+Write-Host "For more: https://jmespath.org/tutorial.html" -ForegroundColor Gray
+
+#!markdown
+
+## Task 4: Use Azure CLI Interactive Mode
+
+`az interactive` provides an enhanced shell experience with auto-completion, inline documentation, and colorized output.
+
+**Features:**
+- Auto-completion for commands and parameters
+- Inline documentation with examples
+- Colorized command output
+- Command history and navigation
+- Scoped completions (e.g., `vm` scope for VM commands)
+
+**Note:** This is different from Cloud Shell - it runs locally with enhanced UX.
+
+#!pwsh
+
+# Task 4: Azure CLI Interactive Mode
+
+Write-Host "=== Task 4: az interactive Mode ===" -ForegroundColor Cyan
+
+Write-Host "`nWhat is az interactive?" -ForegroundColor Yellow
+Write-Host "An enhanced CLI experience with:" -ForegroundColor Gray
+Write-Host "  • Auto-completion as you type" -ForegroundColor Green
+Write-Host "  • Inline documentation with examples" -ForegroundColor Green
+Write-Host "  • Colorized output" -ForegroundColor Green
+Write-Host "  • Command history (up/down arrows)" -ForegroundColor Green
+Write-Host "  • Scoped completions for focused work" -ForegroundColor Green
+
+# Check if interactive mode extension is available
+Write-Host "`nChecking for interactive extension..." -ForegroundColor Yellow
+$extensions = az extension list 2>$null | ConvertFrom-Json
+$interactiveExt = $extensions | Where-Object { $_.name -eq 'interactive' }
+
+if (-not $interactiveExt) {
+    Write-Host "Interactive extension not installed. Installing..." -ForegroundColor Yellow
+    az extension add --name interactive
+    Write-Host "✓ Interactive extension installed" -ForegroundColor Green
+} else {
+    Write-Host "✓ Interactive extension already installed" -ForegroundColor Green
+}
+
+Write-Host "`n=== HOW TO USE az interactive ===" -ForegroundColor Cyan
+
+Write-Host "`n1. Launch interactive mode:" -ForegroundColor Yellow
+Write-Host "   az interactive" -ForegroundColor Gray
+
+Write-Host "`n2. Try typing (auto-complete activates):" -ForegroundColor Yellow
+Write-Host "   vm create" -ForegroundColor Gray
+Write-Host "   → See parameters with examples as you type" -ForegroundColor Green
+
+Write-Host "`n3. Use scoped mode for focused work:" -ForegroundColor Yellow
+Write-Host "   az>> vm" -ForegroundColor Gray
+Write-Host "   vm>> list    (no need to type 'az vm' repeatedly)" -ForegroundColor Green
+Write-Host "   vm>> show --name myVM --resource-group myRG" -ForegroundColor Green
+Write-Host "   vm>> exit    (return to full az scope)" -ForegroundColor Green
+
+Write-Host "`n4. Navigation tips:" -ForegroundColor Yellow
+Write-Host "   • Up/Down arrows - command history" -ForegroundColor Gray
+Write-Host "   • Tab - complete current suggestion" -ForegroundColor Gray
+Write-Host "   • Ctrl+D or 'exit' - quit interactive mode" -ForegroundColor Gray
+
+Write-Host "`n5. View inline help:" -ForegroundColor Yellow
+Write-Host "   Type command and see:" -ForegroundColor Gray
+Write-Host "   - Parameter descriptions" -ForegroundColor Green
+Write-Host "   - Example commands" -ForegroundColor Green
+Write-Host "   - Related commands" -ForegroundColor Green
+
+Write-Host "`n** HANDS-ON PRACTICE **" -ForegroundColor Cyan
+Write-Host "Launch interactive mode and try these exercises:`n" -ForegroundColor Yellow
+
+$exercises = @"
+Exercise 1: Explore VM commands
+  1. Run: az interactive
+  2. Type: vm
+  3. Observe auto-completion suggestions
+  4. Try: vm list
+  5. Exit scope: exit
+
+Exercise 2: Scoped work with storage
+  1. In az interactive, type: %%storage
+  2. Enter storage scope: storage
+  3. Try: account list
+  4. Try: account show --name <tab complete>
+  5. Exit: Ctrl+D
+
+Exercise 3: Use inline examples
+  1. In az interactive, type: network vnet create
+  2. Read inline documentation
+  3. Note required vs optional parameters
+  4. Copy example command format
+"@
+Write-Host $exercises -ForegroundColor Gray
+
+Write-Host "`n✓ Task 4 Complete (after practicing)!" -ForegroundColor Green
+
+#!markdown
+
+## Task 5: Connect to Azure Cloud Shell from Local Tools
+
+Azure Cloud Shell provides a browser-based shell with pre-configured tools. You can access it from:
+- Browser (shell.azure.com)
+- Azure Portal (cloud icon)
+- Windows Terminal (built-in profile)
+- VS Code (with Azure Account extension)
+
+**Benefits:**
+- No local tool installation needed
+- Pre-authenticated to Azure
+- Persistent storage (clouddrive)
+- Access from any device
+
+This task focuses on connecting from Windows Terminal and VS Code.
+
+#!pwsh
+
+# Task 5: Azure Cloud Shell Integration
+
+Write-Host "=== Task 6: Cloud Shell Connectivity ===" -ForegroundColor Cyan
+
+Write-Host "`n=== Access Methods ===" -ForegroundColor Yellow
+Write-Host "1. Browser:" -ForegroundColor Cyan
+Write-Host "   → Navigate to https://shell.azure.com" -ForegroundColor Gray
+Write-Host "   → Choose PowerShell or Bash" -ForegroundColor Gray
+
+Write-Host "`n2. Azure Portal:" -ForegroundColor Cyan
+Write-Host "   → Click cloud icon (>_) in top navigation" -ForegroundColor Gray
+Write-Host "   → Shell opens in portal pane" -ForegroundColor Gray
+
+Write-Host "`n3. Windows Terminal:" -ForegroundColor Cyan
+Write-Host "   → Open Windows Terminal" -ForegroundColor Gray
+Write-Host "   → Click dropdown arrow or press Ctrl+Shift+P" -ForegroundColor Gray
+Write-Host "   → Select 'Azure Cloud Shell'" -ForegroundColor Gray
+Write-Host "   → Choose PowerShell or Bash" -ForegroundColor Gray
+
+Write-Host "`n4. VS Code:" -ForegroundColor Cyan
+Write-Host "   → Install 'Azure Account' extension (ms-vscode.azure-account)" -ForegroundColor Gray
+Write-Host "   → Press Ctrl+Shift+P → 'Azure: Sign in'" -ForegroundColor Gray
+Write-Host "   → Open Terminal pane" -ForegroundColor Gray
+Write-Host "   → Click dropdown → 'Azure Cloud Shell (PowerShell/Bash)'" -ForegroundColor Gray
+
+# Check if Windows Terminal is available
+Write-Host "`n=== Windows Terminal Configuration ===" -ForegroundColor Cyan
+$wtPath = Get-Command wt.exe -ErrorAction SilentlyContinue
+if ($wtPath) {
+    Write-Host "✓ Windows Terminal detected" -ForegroundColor Green
+    Write-Host "`nLaunch Cloud Shell in Windows Terminal:" -ForegroundColor Yellow
+    Write-Host "  Option 1: wt.exe -p 'Azure Cloud Shell'" -ForegroundColor Gray
+    Write-Host "  Option 2: Ctrl+Shift+P in WT → type 'Azure Cloud Shell'" -ForegroundColor Gray
+} else {
+    Write-Host "✗ Windows Terminal not detected" -ForegroundColor Yellow
+    Write-Host "Install from Microsoft Store: 'Windows Terminal'" -ForegroundColor Gray
+}
+
+# Check if VS Code is available
+Write-Host "`n=== VS Code Configuration ===" -ForegroundColor Cyan
+$vsCodePath = Get-Command code -ErrorAction SilentlyContinue
+if ($vsCodePath) {
+    Write-Host "✓ VS Code detected" -ForegroundColor Green
+    Write-Host "`nSetup steps:" -ForegroundColor Yellow
+    Write-Host "1. Install Azure Account extension:" -ForegroundColor Gray
+    Write-Host "   code --install-extension ms-vscode.azure-account" -ForegroundColor Green
+    Write-Host "2. Sign in to Azure:" -ForegroundColor Gray
+    Write-Host "   Ctrl+Shift+P → 'Azure: Sign in'" -ForegroundColor Green
+    Write-Host "3. Open Cloud Shell terminal:" -ForegroundColor Gray
+    Write-Host "   Terminal dropdown → 'Azure Cloud Shell'" -ForegroundColor Green
+} else {
+    Write-Host "✗ VS Code not detected in PATH" -ForegroundColor Yellow
+}
+
+# Cloud Shell file share mapping (advanced)
+Write-Host "`n=== Advanced: Map Cloud Shell File Share (Optional) ===" -ForegroundColor Cyan
+Write-Host "Cloud Shell uses Azure Files for persistent storage." -ForegroundColor Gray
+Write-Host "You can map it as a network drive for local file access.`n" -ForegroundColor Gray
+
+$mappingScript = @'
+# Map Cloud Shell file share to local drive
+# Prerequisites: Port 445 open, storage account name/key from Portal
+
+# 1. Get storage account details from Azure Portal:
+#    Portal → Cloud Shell → Settings → Show storage settings
+#    Note: Storage account name and File share name
+
+# 2. Test connectivity
+$storageAccountName = "cs<uniqueid>"  # Replace with your storage account
+$fileShareName = "cs-<username>"       # Replace with your file share
+Test-NetConnection -ComputerName "$storageAccountName.file.core.windows.net" -Port 445
+
+# 3. Get storage account key from Portal:
+#    Storage Account → Access keys → Copy key1
+
+# 4. Save credentials
+$storageKey = "<your-storage-key>"
+cmdkey /add:"$storageAccountName.file.core.windows.net" /user:"Azure\$storageAccountName" /pass:"$storageKey"
+
+# 5. Map drive
+$connectTestResult = Test-NetConnection -ComputerName "$storageAccountName.file.core.windows.net" -Port 445
+if ($connectTestResult.TcpTestSucceeded) {
+    New-PSDrive -Name Z -PSProvider FileSystem -Root "\\$storageAccountName.file.core.windows.net\$fileShareName" -Persist
+    Write-Host "✓ Cloud Shell drive mapped to Z:" -ForegroundColor Green
+} else {
+    Write-Host "✗ Port 445 blocked - cannot map drive" -ForegroundColor Red
+    Write-Host "Workaround: Use Cloud Shell web interface or portal" -ForegroundColor Yellow
+}
+'@
+
+Write-Host "File Share Mapping Script:" -ForegroundColor Yellow
+Write-Host $mappingScript -ForegroundColor Gray
+
+Write-Host "`n** HANDS-ON PRACTICE **" -ForegroundColor Cyan
+Write-Host "Complete these exercises:`n" -ForegroundColor Yellow
+
+$cloudShellExercises = @"
+Exercise 1: Windows Terminal Cloud Shell
+  1. Open Windows Terminal
+  2. Dropdown → 'Azure Cloud Shell' (or Ctrl+Shift+P)
+  3. Choose PowerShell
+  4. Run: az account show
+  5. Run: Get-AzContext
+  6. Create test file: "Test from WT" | Out-File ~/clouddrive/wt-test.txt
+  7. Verify: ls ~/clouddrive
+
+Exercise 2: VS Code Cloud Shell
+  1. Open VS Code
+  2. Install extension: Azure Resources (if not installed)
+  3. Ctrl+Shift+P → 'Azure: Sign in'
+  4. Open Terminal pane
+  5. Terminal dropdown → 'Azure Cloud Shell (PowerShell)'
+  6. Run: az account show
+  7. Create test file: "Test from VS Code" | Out-File ~/clouddrive/vscode-test.txt
+  8. Verify file exists: cat ~/clouddrive/vscode-test.txt
+
+Exercise 3: Verify Persistence
+  1. Close VS Code / Windows Terminal
+  2. Open browser: https://shell.azure.com
+  3. Run: ls ~/clouddrive
+  4. Verify: Both test files still exist (persistence confirmed!)
+
+Exercise 4: Advanced - File Share Mapping (Optional)
+  1. Portal → Cloud Shell → Settings → Storage settings
+  2. Note storage account name
+  3. Test port 445 connectivity
+  4. If open, use mapping script above
+  5. If blocked, use Cloud Shell web interface for file access
+"@
+Write-Host $cloudShellExercises -ForegroundColor Gray
+
+Write-Host "`n** TROUBLESHOOTING **" -ForegroundColor Yellow
+Write-Host "Cloud Shell won't connect:" -ForegroundColor Red
+Write-Host "  → Check Azure subscription is active" -ForegroundColor Gray
+Write-Host "  → Verify network allows shell.azure.com" -ForegroundColor Gray
+Write-Host "  → Try incognito/private browser window" -ForegroundColor Gray
+
+Write-Host "`nFile share mapping fails:" -ForegroundColor Red
+Write-Host "  → Port 445 likely blocked by ISP/firewall" -ForegroundColor Gray
+Write-Host "  → Use Cloud Shell web interface instead" -ForegroundColor Gray
+Write-Host "  → Or use Azure Storage Explorer for file management" -ForegroundColor Gray
+
+Write-Host "`n✓ Task 6 Complete (after practicing)!" -ForegroundColor Green
+
+#!markdown
+
+## Verification Checklist
+
+Use this checklist to verify you've completed all lab objectives:
+
+### CLI Tab Completion ✓
+- [ ] Register-ArgumentCompleter scriptblock understood
+- [ ] Tab completion added to PowerShell profile
+- [ ] Tab completion works for az commands in terminal
+- [ ] Can complete subcommands, parameters, and values
+- [ ] Completion persists across PowerShell sessions
+
+### Output Format Mastery ✓
+- [ ] Understand use cases for table/json/yaml/tsv/jsonc
+- [ ] Can choose appropriate format for different scenarios
+- [ ] Know table for humans, json for scripting
+- [ ] Tested --output parameter with various commands
+- [ ] Can combine formats with JMESPath queries
+
+### JMESPath Query Skills ✓
+- [ ] Can extract specific properties from arrays
+- [ ] Can filter results with conditions
+- [ ] Can project/rename fields with object notation
+- [ ] Understand array projections [].[]
+- [ ] Can count results with length(@)
+- [ ] Tested JMESPath tutorial examples
+
+### Interactive Mode Proficiency ✓
+- [ ] Installed interactive extension
+- [ ] Launched az interactive successfully
+- [ ] Used auto-completion while typing
+- [ ] Entered and exited command scopes
+- [ ] Explored inline documentation
+- [ ] Understand Ctrl+D to exit
+
+### Extensions Installed ✓
+- [ ] ai-examples extension installed
+- [ ] Enhanced help tested (az vm create -h)
+- [ ] az next command tested for suggestions
+- [ ] scenario-guide extension installed
+- [ ] Tested scenario discovery (az scenario guide)
+- [ ] Verified installations with az extension list
+
+### Cloud Shell Connectivity ✓
+- [ ] Accessed Cloud Shell via browser (shell.azure.com)
+- [ ] Connected from Windows Terminal
+- [ ] Connected from VS Code with Azure Account extension
+- [ ] Created test files in clouddrive
+- [ ] Verified file persistence across sessions
+- [ ] Understand clouddrive storage account mapping
+
+---
+
+#!markdown
+
+## Lab Summary
+
+### What You Accomplished
+
+In this lab, you mastered Azure CLI advanced features and integrated Cloud Shell into your workflow:
+
+1. **CLI Tab Completion**: Configured PowerShell argument completer for intelligent az command completion
+2. **Output Formats**: Mastered table/json/yaml/tsv/jsonc for different use cases (viewing vs scripting)
+3. **JMESPath Queries**: Learned powerful JSON filtering without external tools
+4. **Interactive Mode**: Explored az interactive for enhanced command discovery
+5. **CLI Extensions**: Installed ai-examples and scenario-guide for AI-powered help
+6. **Cloud Shell Integration**: Connected Cloud Shell from Windows Terminal and VS Code
+7. **Custom Helper**: Built comprehensive CLI helper script with reusable functions
+
+### Key Takeaways
+
+✅ **Tab completion** dramatically speeds CLI command entry and reduces errors  
+✅ **Output formats** should match your goal: table for viewing, json for scripting  
+✅ **JMESPath** eliminates need for external JSON parsing tools  
+✅ **az interactive** excellent for learning new services and exploring parameters  
+✅ **CLI extensions** add AI-powered examples and scenario-based guidance  
+✅ **Cloud Shell** provides consistent environment accessible from any device  
+✅ **Custom helpers** codify your workflows for team reuse  
+
+### Next Steps
+
+- **Module 4**: Apply CLI skills to Azure networking (VNets, NSGs, peering)
+- **Practice**: Use JMESPath daily with `--query` until it becomes natural
+- **Explore**: Try other CLI extensions (aks-preview, azure-devops, front-door)
+- **Customize**: Expand AzCLIHelper.ps1 with functions specific to your workflows
+
+### Troubleshooting Tips
+
+**Tab completion not working:**
+- Verify scriptblock in profile with: Select-String -Path $PROFILE -Pattern "Register-ArgumentCompleter"
+- Reload profile: `. $PROFILE`
+- Check Az CLI in PATH: `az --version`
+
+**JMESPath queries failing:**
+- Validate JSON first: `az <command> --output json`
+- Test queries incrementally: start with `[]`, then add filters
+- Use https://jmespath.org/ for syntax testing
+
+**Interactive mode not launching:**
+- Install extension: `az extension add --name interactive`
+- Check CLI version: `az --version` (need 2.37.0+)
+- Try without extensions: `az interactive --disable-all-extensions`
+
+**Cloud Shell timeout:**
+- Sessions timeout after 20 minutes inactivity
+- Files in clouddrive persist across sessions
+- Check subscription status in Portal
+
+**Extensions not installing:**
+- Check CLI version compatibility
+- Update CLI: Download from https://aka.ms/installazurecliwindows
+- Install with --debug flag: `az extension add --name <name> --debug`
+
+---
+
+### Module 3 Complete! 🎉
+
+You've now mastered both PowerShell and Azure CLI command-line productivity features. Combined with your IaC knowledge from Module 1 and development environment from Module 2, you're ready to tackle hands-on Azure resource management in Modules 4-12.
+
+**Great work! Take a break, then continue to Module 4: Azure Networking Fundamentals.**

@@ -1,0 +1,582 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"name":"csharp"},{"name":"fsharp","languageName":"F#","aliases":["f#","fs"]},{"name":"html","languageName":"HTML"},{"name":"http","languageName":"HTTP"},{"name":"javascript","languageName":"JavaScript","aliases":["js"]},{"name":"mermaid","languageName":"Mermaid"},{"name":"pwsh","languageName":"PowerShell","aliases":["powershell"]},{"name":"value"}]}}
+
+#!markdown
+
+# Lab 04: Create Virtual Network with Security Groups
+
+**Estimated Time:** 45 minutes  
+**Difficulty:** Beginner/Intermediate
+
+## Objectives
+
+By completing this lab, you will:
+- [ ] Create a virtual network with multiple subnets using proper CIDR notation
+- [ ] Implement network security groups (NSGs) with defense-in-depth principles
+- [ ] Automate network infrastructure deployment using PowerShell
+- [ ] Validate network isolation and security rule effectiveness
+
+## Prerequisites
+
+- Azure subscription with Contributor or Owner role
+- PowerShell 7+ with Az modules installed
+- Basic understanding of TCP/IP networking and CIDR notation
+- Public IP address for SSH access (automatically detected in lab)
+
+## Lab Environment
+
+You will create the following resources:
+- Resource Group: `lab04-net-rg`
+- Location: `northeurope`
+- Virtual Network: `lab04-vnet` (192.168.0.0/16)
+  - Jumpbox subnet: 192.168.1.0/29 (3 usable IPs)
+  - Management subnet: 192.168.2.0/24 (251 usable IPs)
+  - Frontend subnet: 192.168.3.0/24 (251 usable IPs)
+- Three Network Security Groups with role-specific rules
+
+#!pwsh
+
+# Lab Setup - Connect to Azure and Define Variables
+
+# Variables for this lab
+$resourceGroupName = 'lab04-net-rg'
+$vnetName = 'lab04-vnet'
+$location = 'northeurope'
+
+# Verify Azure connection
+$context = Get-AzContext
+if (-not $context) {
+    Write-Warning "Please connect to Azure first"
+    Connect-AzAccount
+}
+
+Write-Host "✅ Connected to Azure Subscription: $($context.Subscription.Name)" -ForegroundColor Green
+Write-Host "   Account: $($context.Account.Id)" -ForegroundColor Cyan
+Write-Host "   Tenant: $($context.Tenant.Id)" -ForegroundColor Cyan
+
+# Get your public IP address for NSG rules
+try {
+    $myPublicIp = (Invoke-RestMethod -Uri 'https://ipinfo.io/json').ip
+    Write-Host "🌐 Your public IP address: $myPublicIp" -ForegroundColor Green
+} catch {
+    Write-Warning "Could not detect public IP. You may need to manually configure NSG rules."
+    $myPublicIp = "0.0.0.0/0"  # Fallback (not recommended for production)
+}
+
+#!markdown
+
+## Task 1: Create Resource Group and Virtual Network
+
+In this task, you will create a resource group to organize network resources and an initial virtual network with a /16 address space.
+
+### Steps:
+1. Create a resource group named `lab04-net-rg` in the `northeurope` region
+2. Create a virtual network named `lab04-vnet` with address space `192.168.0.0/16`
+3. Verify the virtual network was created successfully
+
+### Expected Result:
+You should see the VNet created with the specified address prefix. The VNet will initially have no subnets (we'll add those in Task 2).
+
+### Hints:
+- Use `New-AzResourceGroup` cmdlet with `-Name` and `-Location` parameters
+- Use `New-AzVirtualNetwork` cmdlet with `-Name`, `-AddressPrefix`, `-ResourceGroupName`, and `-Location` parameters
+- Store the VNet object in a variable (`$vnet`) for use in later tasks
+
+#!pwsh
+
+# Task 1: Create Resource Group and VNet
+
+# TODO: Create the resource group
+
+
+# TODO: Create the virtual network with 192.168.0.0/16 address space
+
+
+# Display the VNet details
+$vnet | Select-Object Name, Location, @{n='AddressSpace';e={$_.AddressSpace.AddressPrefixes}}
+
+#!markdown
+
+### ✅ Verification
+
+Run the following to verify Task 1 completion:
+
+#!pwsh
+
+# Verify Task 1
+
+$rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
+$vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+
+if ($rg -and $vnet) {
+    Write-Host "✅ Task 1 Complete: Resource group and VNet created" -ForegroundColor Green
+    Write-Host "   VNet Address Space: $($vnet.AddressSpace.AddressPrefixes -join ', ')" -ForegroundColor Cyan
+} else {
+    Write-Host "❌ Task 1 Incomplete: Missing resource group or VNet" -ForegroundColor Red
+    if (-not $rg) { Write-Host "   Missing: Resource group '$resourceGroupName'" -ForegroundColor Yellow }
+    if (-not $vnet) { Write-Host "   Missing: VNet '$vnetName'" -ForegroundColor Yellow }
+}
+
+#!markdown
+
+## Task 2: Add Subnets to Virtual Network
+
+In this task, you will add three subnets to the VNet following a layered security architecture.
+
+### Steps:
+1. Create a subnet configuration for the **jumpbox subnet** (192.168.1.0/29 - smallest practical size)
+2. Create a subnet configuration for the **management subnet** (192.168.2.0/24 - for admin VMs)
+3. Create a subnet configuration for the **frontend subnet** (192.168.3.0/24 - for web servers)
+4. Apply all subnet configurations to the VNet using `Set-AzVirtualNetwork`
+
+### Expected Result:
+The VNet should have three subnets with the correct CIDR ranges. Remember that Azure reserves 5 IP addresses per subnet: the **first 4 addresses** (.0, .1, .2, .3) and the **last address** (broadcast).
+
+### Hints:
+- Use `Add-AzVirtualNetworkSubnetConfig` to add subnets to an existing VNet
+- You must call `Set-AzVirtualNetwork` after adding each subnet to persist changes
+- Retrieve the updated VNet object after each change using `Get-AzVirtualNetwork`
+- Alternative: Create all subnet configs first with `New-AzVirtualNetworkSubnetConfig`, then create VNet with all subnets at once
+
+#!pwsh
+
+# Task 2: Add Three Subnets
+
+# Get the VNet object (in case you're starting from this task)
+$vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+
+# TODO: Add jumpbox subnet (192.168.1.0/29)
+# Add-AzVirtualNetworkSubnetConfig -Name 'jumpbox' -AddressPrefix '192.168.1.0/29' -VirtualNetwork $vnet
+# $vnet | Set-AzVirtualNetwork
+
+# Refresh VNet object after adding subnet
+# $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+
+# TODO: Add management subnet (192.168.2.0/24)
+# Add-AzVirtualNetworkSubnetConfig -Name 'management' -AddressPrefix '192.168.2.0/24' -VirtualNetwork $vnet
+# $vnet | Set-AzVirtualNetwork
+
+# Refresh VNet object after adding subnet
+# $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+
+# TODO: Add frontend subnet (192.168.3.0/24)
+# Add-AzVirtualNetworkSubnetConfig -Name 'frontend' -AddressPrefix '192.168.3.0/24' -VirtualNetwork $vnet
+# $vnet | Set-AzVirtualNetwork
+
+# Display subnet summary
+Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName | 
+    Select-Object -ExpandProperty Subnets | 
+    Select-Object Name, AddressPrefix, @{n='UsableIPs';e={
+        $mask = [int]$_.AddressPrefix.Split('/')[-1]
+        $totalIPs = [Math]::Pow(2, 32 - $mask)
+        [int]($totalIPs - 5)  # Azure reserves 5 IPs (first 4 + last 1)
+    }}
+
+#!markdown
+
+### ✅ Verification
+
+Run the following to verify Task 2 completion:
+
+#!pwsh
+
+# Verify Task 2
+
+$vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+
+$expectedSubnets = @{
+    'jumpbox' = '192.168.1.0/29'
+    'management' = '192.168.2.0/24'
+    'frontend' = '192.168.3.0/24'
+}
+
+$allCorrect = $true
+foreach ($subnetName in $expectedSubnets.Keys) {
+    $subnet = $vnet.Subnets | Where-Object Name -eq $subnetName
+    if ($subnet -and $subnet.AddressPrefix -eq $expectedSubnets[$subnetName]) {
+        Write-Host "✅ Subnet '$subnetName' configured correctly: $($subnet.AddressPrefix)" -ForegroundColor Green
+    } else {
+        Write-Host "❌ Subnet '$subnetName' missing or incorrect" -ForegroundColor Red
+        $allCorrect = $false
+    }
+}
+
+if ($allCorrect) {
+    Write-Host "`n✅ Task 2 Complete: All subnets configured correctly" -ForegroundColor Green
+} else {
+    Write-Host "`n❌ Task 2 Incomplete: Review subnet configurations" -ForegroundColor Red
+}
+
+#!markdown
+
+## Task 3: Create Network Security Groups with Defense-in-Depth Rules
+
+In this task, you will implement layered security using NSGs. This follows the **jump box pattern** where:
+- Only the jump box has SSH access from the internet
+- Management VMs are only accessible via RDP from the jump box
+- Web servers accept HTTP traffic from the internet
+
+### Steps:
+1. Create an NSG for the **jumpbox subnet** that allows SSH (port 22) from your public IP and Azure Cloud Shell
+2. Create an NSG for the **management subnet** that allows RDP (port 3389) only from the jumpbox subnet (192.168.1.0/29)
+3. Create an NSG for the **frontend subnet** that allows HTTP (port 80) from the internet
+4. Verify all NSGs created with correct rules
+
+### Expected Result:
+Three NSGs with security rules enforcing the jump box access pattern. Rules should have appropriate priorities (lower numbers = higher priority).
+
+### Hints:
+- Use `New-AzNetworkSecurityRuleConfig` to define security rules
+- Combine multiple rules in a single `New-AzNetworkSecurityGroup` call using array syntax: `-SecurityRules @($rule1, $rule2)`
+- Use service tag `AzureCloud` for Azure Cloud Shell access (includes Azure infrastructure IPs)
+- Use service tag `Internet` for public internet sources
+- Set priority values (e.g., 100, 110, 120) to control rule evaluation order
+- Consider using PowerShell splatting for complex parameters: `@{Name='...'; Value='...'}`
+
+#!pwsh
+
+# Task 3: Create NSGs with Security Rules
+
+# TODO: Create security rule allowing SSH from your public IP (priority 100)
+# Example using splatting for readability:
+# $sshMyIpRule = @{
+#     Name                     = 'Allow-SSH-MyIP'
+#     Description              = 'Allow SSH from my public IP'
+#     Access                   = 'Allow'
+#     Protocol                 = 'Tcp'
+#     Direction                = 'Inbound'
+#     Priority                 = 100
+#     SourceAddressPrefix      = $myPublicIp
+#     SourcePortRange          = '*'
+#     DestinationAddressPrefix = '*'
+#     DestinationPortRange     = '22'
+# }
+# $sshMyIpRuleConfig = New-AzNetworkSecurityRuleConfig @sshMyIpRule
+
+# TODO: Create security rule allowing SSH from Azure Cloud Shell (priority 110)
+# Azure Cloud Shell uses the 'AzureCloud' service tag which includes Azure infrastructure IPs
+# $sshCloudRule = @{
+#     Name                     = 'Allow-SSH-AzureCloud'
+#     Description              = 'Allow SSH from Azure Cloud Shell'
+#     Access                   = 'Allow'
+#     Protocol                 = 'Tcp'
+#     Direction                = 'Inbound'
+#     Priority                 = 110
+#     SourceAddressPrefix      = 'AzureCloud'
+#     SourcePortRange          = '*'
+#     DestinationAddressPrefix = '*'
+#     DestinationPortRange     = '22'
+# }
+# $sshCloudRuleConfig = New-AzNetworkSecurityRuleConfig @sshCloudRule
+
+# TODO: Create NSG for jumpbox with both SSH rules
+# $jumpboxNsgParams = @{
+#     Name              = 'jumpbox-nsg'
+#     ResourceGroupName = $resourceGroupName
+#     Location          = $location
+#     SecurityRules     = @($sshMyIpRuleConfig, $sshCloudRuleConfig)
+# }
+# New-AzNetworkSecurityGroup @jumpboxNsgParams
+
+# TODO: Create security rule allowing RDP from jumpbox subnet only (priority 100)
+# $rdpRule = @{
+#     Name                     = 'Allow-RDP-Jumpbox'
+#     Description              = 'Allow RDP from jumpbox subnet only'
+#     Access                   = 'Allow'
+#     Protocol                 = 'Tcp'
+#     Direction                = 'Inbound'
+#     Priority                 = 100
+#     SourceAddressPrefix      = '192.168.1.0/29'
+#     SourcePortRange          = '*'
+#     DestinationAddressPrefix = '*'
+#     DestinationPortRange     = '3389'
+# }
+# $rdpRuleConfig = New-AzNetworkSecurityRuleConfig @rdpRule
+
+# TODO: Create NSG for management subnet
+# $mgmtNsgParams = @{
+#     Name              = 'management-nsg'
+#     ResourceGroupName = $resourceGroupName
+#     Location          = $location
+#     SecurityRules     = @($rdpRuleConfig)
+# }
+# New-AzNetworkSecurityGroup @mgmtNsgParams
+
+# TODO: Create security rule allowing HTTP from internet (priority 100)
+# $httpRule = @{
+#     Name                     = 'Allow-HTTP-Internet'
+#     Description              = 'Allow HTTP from internet'
+#     Access                   = 'Allow'
+#     Protocol                 = 'Tcp'
+#     Direction                = 'Inbound'
+#     Priority                 = 100
+#     SourceAddressPrefix      = 'Internet'
+#     SourcePortRange          = '*'
+#     DestinationAddressPrefix = '*'
+#     DestinationPortRange     = '80'
+# }
+# $httpRuleConfig = New-AzNetworkSecurityRuleConfig @httpRule
+
+# TODO: Create NSG for frontend subnet
+# $frontendNsgParams = @{
+#     Name              = 'frontend-nsg'
+#     ResourceGroupName = $resourceGroupName
+#     Location          = $location
+#     SecurityRules     = @($httpRuleConfig)
+# }
+# New-AzNetworkSecurityGroup @frontendNsgParams
+
+# Display NSG summary
+Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName | 
+    Select-Object Name, @{n='Rules';e={$_.SecurityRules.Count}} |
+    Format-Table
+
+Write-Host "`nDetailed Rule Configuration:" -ForegroundColor Cyan
+Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName | ForEach-Object {
+    Write-Host "`n$($_.Name):" -ForegroundColor Yellow
+    $_.SecurityRules | Select-Object Name, Priority, Direction, Access, Protocol, 
+        SourceAddressPrefix, SourcePortRange, DestinationAddressPrefix, DestinationPortRange |
+        Format-Table
+}
+
+#!markdown
+
+### ✅ Verification
+
+Run the following to verify Task 3 completion:
+
+#!pwsh
+
+# Verify Task 3
+
+$nsgs = @{
+    'jumpbox-nsg' = 2  # Should have 2 rules (SSH from public IP + Azure Cloud)
+    'management-nsg' = 1  # Should have 1 rule (RDP from jumpbox)
+    'frontend-nsg' = 1  # Should have 1 rule (HTTP from internet)
+}
+
+$allCorrect = $true
+foreach ($nsgName in $nsgs.Keys) {
+    $nsg = Get-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if ($nsg) {
+        $ruleCount = $nsg.SecurityRules.Count
+        $expectedCount = $nsgs[$nsgName]
+        if ($ruleCount -ge $expectedCount) {
+            Write-Host "✅ NSG '$nsgName' created with $ruleCount rule(s)" -ForegroundColor Green
+            
+            # Display rule details for verification
+            $nsg.SecurityRules | ForEach-Object {
+                Write-Host "   - $($_.Name): Priority $($_.Priority), $($_.Direction) $($_.Access) $($_.Protocol)/$($_.DestinationPortRange) from $($_.SourceAddressPrefix)" -ForegroundColor Cyan
+            }
+        } else {
+            Write-Host "⚠️ NSG '$nsgName' has only $ruleCount rule(s), expected $expectedCount" -ForegroundColor Yellow
+            $allCorrect = $false
+        }
+    } else {
+        Write-Host "❌ NSG '$nsgName' not found" -ForegroundColor Red
+        $allCorrect = $false
+    }
+}
+
+if ($allCorrect) {
+    Write-Host "`n✅ Task 3 Complete: All NSGs configured" -ForegroundColor Green
+} else {
+    Write-Host "`n❌ Task 3 Incomplete: Review NSG configurations" -ForegroundColor Red
+}
+
+#!markdown
+
+## Task 4: Attach NSGs to Subnets
+
+In this task, you will associate each NSG with its corresponding subnet to enforce the security rules.
+
+### Steps:
+1. Get the jumpbox NSG and attach it to the jumpbox subnet using `Set-AzVirtualNetworkSubnetConfig`
+2. Get the management NSG and attach it to the management subnet
+3. Get the frontend NSG and attach it to the frontend subnet
+4. Apply changes to the VNet using `Set-AzVirtualNetwork`
+
+### Expected Result:
+Each subnet should have its NSG attached. Network traffic to VMs in these subnets will be filtered according to the NSG rules.
+
+### Hints:
+- Use `Set-AzVirtualNetworkSubnetConfig` with `-NetworkSecurityGroup` parameter
+- You must specify the subnet's `-AddressPrefix` when updating (use the existing prefix)
+- Call `Set-AzVirtualNetwork` after each subnet configuration change to persist updates
+- Retrieve NSG objects using `Get-AzNetworkSecurityGroup` before attaching
+- Refresh the VNet object with `Get-AzVirtualNetwork` after each update
+
+#!pwsh
+
+# Task 4: Attach NSGs to Subnets
+
+# Get the current VNet object
+$vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+
+# TODO: Get jumpbox NSG and attach to jumpbox subnet
+# $jumpboxNsg = Get-AzNetworkSecurityGroup -Name 'jumpbox-nsg' -ResourceGroupName $resourceGroupName
+# Set-AzVirtualNetworkSubnetConfig -Name 'jumpbox' `
+#     -VirtualNetwork $vnet `
+#     -AddressPrefix '192.168.1.0/29' `
+#     -NetworkSecurityGroup $jumpboxNsg
+
+# TODO: Apply changes to VNet
+# $vnet | Set-AzVirtualNetwork
+
+# Refresh VNet object after update
+# $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+
+# TODO: Get management NSG and attach to management subnet
+# $mgmtNsg = Get-AzNetworkSecurityGroup -Name 'management-nsg' -ResourceGroupName $resourceGroupName
+# Set-AzVirtualNetworkSubnetConfig -Name 'management' `
+#     -VirtualNetwork $vnet `
+#     -AddressPrefix '192.168.2.0/24' `
+#     -NetworkSecurityGroup $mgmtNsg
+
+# TODO: Apply changes to VNet
+# $vnet | Set-AzVirtualNetwork
+
+# Refresh VNet object after update
+# $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+
+# TODO: Get frontend NSG and attach to frontend subnet
+# $frontendNsg = Get-AzNetworkSecurityGroup -Name 'frontend-nsg' -ResourceGroupName $resourceGroupName
+# Set-AzVirtualNetworkSubnetConfig -Name 'frontend' `
+#     -VirtualNetwork $vnet `
+#     -AddressPrefix '192.168.3.0/24' `
+#     -NetworkSecurityGroup $frontendNsg
+
+# TODO: Apply changes to VNet
+# $vnet | Set-AzVirtualNetwork
+
+# Display final subnet configuration with NSG assignments
+$vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+$vnet.Subnets | Select-Object Name, AddressPrefix, 
+    @{n='NSG';e={if ($_.NetworkSecurityGroup) { $_.NetworkSecurityGroup.Id.Split('/')[-1] } else { 'None' }}} |
+    Format-Table -AutoSize
+
+#!markdown
+
+### ✅ Verification
+
+Run the following to verify Task 4 completion:
+
+#!pwsh
+
+# Verify Task 4
+
+$vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+
+$expectedMappings = @{
+    'jumpbox' = 'jumpbox-nsg'
+    'management' = 'management-nsg'
+    'frontend' = 'frontend-nsg'
+}
+
+$allCorrect = $true
+foreach ($subnetName in $expectedMappings.Keys) {
+    $subnet = $vnet.Subnets | Where-Object Name -eq $subnetName
+    if ($subnet.NetworkSecurityGroup) {
+        $attachedNsg = $subnet.NetworkSecurityGroup.Id.Split('/')[-1]
+        $expectedNsg = $expectedMappings[$subnetName]
+        if ($attachedNsg -eq $expectedNsg) {
+            Write-Host "✅ Subnet '$subnetName' correctly attached to '$attachedNsg'" -ForegroundColor Green
+        } else {
+            Write-Host "❌ Subnet '$subnetName' has wrong NSG: $attachedNsg (expected: $expectedNsg)" -ForegroundColor Red
+            $allCorrect = $false
+        }
+    } else {
+        Write-Host "❌ Subnet '$subnetName' has no NSG attached" -ForegroundColor Red
+        $allCorrect = $false
+    }
+}
+
+if ($allCorrect) {
+    Write-Host "`n✅ Task 4 Complete: All NSGs properly attached to subnets" -ForegroundColor Green
+    Write-Host "`n🎉 Lab Complete! Your network infrastructure follows security best practices." -ForegroundColor Green
+    Write-Host "   - Layered security with subnet-level NSGs" -ForegroundColor Cyan
+    Write-Host "   - Jump box pattern for restricted administrative access" -ForegroundColor Cyan
+    Write-Host "   - Defense-in-depth with multiple security rules" -ForegroundColor Cyan
+} else {
+    Write-Host "`n❌ Task 4 Incomplete: Review NSG-subnet associations" -ForegroundColor Red
+}
+
+#!markdown
+
+## 🎯 Challenge (Optional)
+
+Test your advanced networking skills by enhancing the lab environment.
+
+**Requirements:**
+- Add a fourth subnet named `backend` with address range 192.168.4.0/24
+- Create an NSG that allows traffic to port 5432 (PostgreSQL) only from the frontend subnet
+- Attach the new NSG to the backend subnet
+
+**Bonus:**
+- Create a custom NSG rule that denies all outbound internet traffic from the backend subnet (except Azure services)
+- Use Azure service tags in your rules (`VirtualNetwork`, `Internet`, `Sql`, etc.)
+
+**Hint:** Use priority 4096 (lowest) for a deny-all rule, so it only applies if no other rules match.
+
+#!pwsh
+
+# Challenge: Backend Subnet with Database Security
+
+# TODO: Implement your challenge solution here
+
+#!markdown
+
+## Cleanup
+
+Remove all resources created in this lab to avoid charges.
+
+**⚠️ Warning:** This will delete the entire resource group and all contained resources (VNet, subnets, NSGs).
+
+#!pwsh
+
+# Cleanup - Remove lab resources
+
+Write-Host "Resource group to be deleted: $resourceGroupName" -ForegroundColor Yellow
+Write-Host "Resources in group:" -ForegroundColor Yellow
+Get-AzResource -ResourceGroupName $resourceGroupName | 
+    Select-Object Name, ResourceType | 
+    Format-Table
+
+# Uncomment the line below to execute cleanup
+# Remove-AzResourceGroup -Name $resourceGroupName -Force -AsJob
+
+Write-Host "`n⚠️ Cleanup code ready. Uncomment the Remove-AzResourceGroup line to execute." -ForegroundColor Yellow
+Write-Host "This will delete all lab resources to avoid Azure charges." -ForegroundColor Cyan
+
+#!markdown
+
+## Lab Summary
+
+Congratulations! You've completed Lab 04 on Azure Networking Fundamentals.
+
+### What You Learned:
+✅ **Virtual Network Creation**: Created a VNet with a /16 CIDR block for regional connectivity  
+✅ **Subnet Segmentation**: Divided the VNet into logical subnets with proper sizing  
+✅ **Network Security Groups**: Implemented defense-in-depth with layered security rules  
+✅ **Jump Box Pattern**: Secured administrative access through a controlled entry point  
+✅ **PowerShell Automation**: Automated entire network infrastructure deployment  
+
+### Key Takeaways:
+- **Azure reserves 5 IPs** per subnet: first 4 addresses (.0-.3) and last address (broadcast)
+- **NSG rules are stateful**: Return traffic is automatically allowed
+- **Service tags** simplify rule management (Internet, VirtualNetwork, AzureCloud, etc.)
+- **Defense-in-depth** requires multiple layers (NSG, Azure Firewall, app-level controls)
+- **Jump box pattern** is industry standard for secure infrastructure access
+- **PowerShell splatting** improves code readability for complex parameter sets
+
+### Next Steps:
+- Complete Module 5 on **Azure Storage** (storage accounts, blobs, file shares)
+- Explore **Azure Firewall** for centralized network filtering
+- Learn about **VNet Peering** to connect multiple virtual networks
+- Study **Azure Bastion** as a managed alternative to jump boxes
+
+### Additional Resources:
+- [Azure Virtual Network documentation](https://learn.microsoft.com/en-us/azure/virtual-network/)
+- [Network Security Groups overview](https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview)
+- [Azure network security best practices](https://learn.microsoft.com/en-us/azure/security/fundamentals/network-best-practices)

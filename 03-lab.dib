@@ -1,0 +1,610 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"name":"csharp"},{"name":"fsharp","languageName":"F#","aliases":["f#","fs"]},{"name":"html","languageName":"HTML"},{"name":"http","languageName":"HTTP"},{"name":"javascript","languageName":"JavaScript","aliases":["js"]},{"name":"mermaid","languageName":"Mermaid"},{"name":"pwsh","languageName":"PowerShell","aliases":["powershell"]},{"name":"value"}]}}
+
+#!markdown
+
+# Lab 03-1: PowerShell Configuration and Productivity Features
+
+**Estimated Time:** 45 minutes
+
+## Learning Objectives
+By completing this lab, you will:
+- Install and configure Az.Tools.Predictor for intelligent command suggestions
+- Master PSReadLine inline help features (F1, Alt+H, Alt+A)
+- Create a comprehensive PowerShell profile with custom functions and aliases
+- Understand tab completion and IntelliSense capabilities
+- Leverage Show-Command GUI for parameter discovery
+
+## Prerequisites
+- PowerShell 7+ (from Module 2)
+- Azure PowerShell Az module installed (from Module 2)
+- Active Azure subscription
+- Completion of Module 2 labs
+
+## Lab Environment
+This lab uses your local PowerShell environment configured in Module 2.
+
+---
+
+#!pwsh
+
+# Lab Setup - Verify Environment
+Write-Host "=== Lab 03-1 Environment Verification ===" -ForegroundColor Cyan
+
+# Check PowerShell version
+$psVersion = $PSVersionTable.PSVersion
+Write-Host "PowerShell Version: $psVersion" -ForegroundColor $(if ($psVersion.Major -ge 7) { "Green" } else { "Red" })
+
+# Check Az module
+$azModule = Get-Module -ListAvailable -Name Az | Select-Object -First 1
+if ($azModule) {
+    Write-Host "Az Module: $($azModule.Version) ✓" -ForegroundColor Green
+} else {
+    Write-Host "Az Module: Not found ✗" -ForegroundColor Red
+    Write-Host "Install with: Install-Module -Name Az -AllowClobber -Scope CurrentUser" -ForegroundColor Yellow
+}
+
+# Check PSReadLine
+$psReadLineModule = Get-Module -ListAvailable -Name PSReadLine | Select-Object -First 1
+if ($psReadLineModule) {
+    Write-Host "PSReadLine: $($psReadLineModule.Version) ✓" -ForegroundColor Green
+} else {
+    Write-Host "PSReadLine: Not found ✗" -ForegroundColor Red
+}
+
+# Show profile location
+Write-Host "`nPowerShell Profile Location:" -ForegroundColor Yellow
+Write-Host $PROFILE -ForegroundColor Gray
+Write-Host "Profile exists: $(Test-Path $PROFILE)" -ForegroundColor Gray
+
+Write-Host "`nEnvironment verification complete!`n" -ForegroundColor Cyan
+
+#!markdown
+
+## Task 1: Install and Configure Az.Tools.Predictor
+
+Az.Tools.Predictor provides intelligent command suggestions based on your command history and popular Azure patterns. It learns from your usage and suggests likely next commands.
+
+**What you'll do:**
+- Check if Az.Tools.Predictor is installed
+- Install if necessary
+- Import and verify the module
+- Test basic prediction functionality
+
+#!pwsh
+
+# Task 1: Install Az.Tools.Predictor
+
+Write-Host "=== Task 1: Az.Tools.Predictor Setup ===" -ForegroundColor Cyan
+
+# TODO: Check if Az.Tools.Predictor is installed
+$predictorModule = Get-Module -ListAvailable -Name Az.Tools.Predictor
+
+if (-not $predictorModule) {
+    Write-Host "Az.Tools.Predictor not found. Installing..." -ForegroundColor Yellow
+    
+    # TODO: Install Az.Tools.Predictor module
+    Install-Module -Name Az.Tools.Predictor -Repository PSGallery -Scope CurrentUser -Force
+    
+    Write-Host "✓ Az.Tools.Predictor installed successfully" -ForegroundColor Green
+} else {
+    Write-Host "✓ Az.Tools.Predictor already installed (version: $($predictorModule.Version))" -ForegroundColor Green
+}
+
+# TODO: Import the module
+Import-Module Az.Tools.Predictor
+
+# Verify installation by listing available commands
+Write-Host "`nAvailable Az.Tools.Predictor commands:" -ForegroundColor Yellow
+Get-Command -Module Az.Tools.Predictor | Format-Table -AutoSize | Out-Default
+
+Write-Host "`n✓ Task 1 Complete!" -ForegroundColor Green
+
+#!markdown
+
+## Task 2: Enable and Configure Predictive IntelliSense
+
+Now that Az.Tools.Predictor is installed, you'll enable it and configure prediction views.
+
+**What you'll learn:**
+- How to enable Az Predictor for the current session
+- Difference between InlineView and ListView
+- How to toggle between prediction views
+- How to accept predictions
+
+**Key concepts:**
+- **InlineView**: Suggestions appear inline (like Fish/ZSH shells)
+- **ListView**: Suggestions appear in dropdown menu below command
+- **F2**: Toggle between InlineView and ListView
+- **RightArrow**: Accept the current suggestion
+
+#!pwsh
+
+# Task 2: Enable Predictive IntelliSense
+
+Write-Host "=== Task 2: Enable Predictive IntelliSense ===" -ForegroundColor Cyan
+
+# TODO: Enable Az Predictor for current session
+Enable-AzPredictor
+
+Write-Host "✓ Az Predictor enabled for current session" -ForegroundColor Green
+
+# TODO: Open a new PowerShell terminal and practice there
+# Check current prediction settings
+$predictionOptions = Get-PSReadLineOption
+Write-Host "`nCurrent Prediction Settings:" -ForegroundColor Yellow
+Write-Host "  Prediction Source: $($predictionOptions.PredictionSource)" -ForegroundColor Gray
+Write-Host "  Prediction View Style: $($predictionOptions.PredictionViewStyle)" -ForegroundColor Gray
+
+# TODO: Practice in the PowerShell terminal
+# TODO: Try changing prediction view style
+# Hint: Comment and uncomment the lines below to test different views
+Write-Host "`nSwitching to ListView mode..." -ForegroundColor Yellow
+Set-PSReadLineOption -PredictionViewStyle ListView
+Write-Host "✓ Prediction view changed to ListView" -ForegroundColor Green
+
+Write-Host "`nSwitching back to InlineView mode..." -ForegroundColor Yellow
+# Set-PSReadLineOption -PredictionViewStyle InlineView
+Write-Host "✓ Prediction view changed to InlineView" -ForegroundColor Green
+
+Write-Host "`nRemember: Press F2 to toggle between views while typing commands!" -ForegroundColor Cyan
+
+Write-Host "`n✓ Task 2 Complete!" -ForegroundColor Green
+
+#!markdown
+
+## Task 3: Master PSReadLine Inline Help Features
+
+PSReadLine provides powerful inline help without leaving the command line. This task explores the F1, Alt+H, and Alt+A keystrokes.
+
+**Important Note:** These keystrokes work interactively in the PowerShell console, not in this notebook. After running the code cell below, open a PowerShell 7 terminal and practice these commands.
+
+**Practice these keystrokes:**
+- **F1**: Show help for cmdlet at cursor
+- **Alt+H**: Show parameter-specific help
+- **Alt+A**: Show all parameter sets for cmdlet
+
+#!pwsh
+
+# Task 3: PSReadLine Inline Help Features
+
+Write-Host "=== Task 3: PSReadLine Inline Help ===" -ForegroundColor Cyan
+
+# List PSReadLine keybindings related to help
+Write-Host "PSReadLine Help Keybindings:" -ForegroundColor Yellow
+Get-PSReadLineKeyHandler | Where-Object Function -Match 'help' | Format-Table -AutoSize | Out-Default
+
+Write-Host "`nPractice Commands (try these in PowerShell terminal):" -ForegroundColor Cyan
+Write-Host "1. Type: Get-AzVirtualNetwork" -ForegroundColor Gray
+Write-Host "   Press F1 - See full cmdlet help" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "2. Type: Get-AzStorageAccount -ResourceGroupName" -ForegroundColor Gray
+Write-Host "   Position cursor on -ResourceGroupName parameter" -ForegroundColor Yellow
+Write-Host "   Press Alt+H - See parameter-specific help" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "3. Type: New-AzResourceGroup" -ForegroundColor Gray
+Write-Host "   Press Alt+A - See all parameter sets" -ForegroundColor Yellow
+
+# TODO: Open a new PowerShell terminal and practice these keystrokes
+Write-Host "`n** ACTION REQUIRED **" -ForegroundColor Red
+Write-Host "Open a PowerShell 7 terminal (Windows Terminal or VS Code terminal)" -ForegroundColor Yellow
+Write-Host "Practice the commands above with F1, Alt+H, and Alt+A keystrokes" -ForegroundColor Yellow
+Write-Host "Return here after practicing (5-10 minutes recommended)" -ForegroundColor Yellow
+
+Write-Host "`n✓ Task 3 Complete (after practicing in terminal)!" -ForegroundColor Green
+
+#!markdown
+
+## Task 4: Create a Comprehensive PowerShell Profile
+
+Your PowerShell profile is a script that runs every time you start PowerShell. It's perfect for customizations like enabling Az Predictor, creating functions, and setting aliases.
+
+**What you'll create:**
+- Profile file (if it doesn't exist)
+- Az Predictor auto-enable
+- Custom Azure status function
+- Useful aliases
+- Default parameter values
+- Colored welcome message
+
+**Best Practice:** Keep your profile organized with comments and sections.
+
+#!pwsh
+
+# Task 4: Create PowerShell Profile
+
+Write-Host "=== Task 4: PowerShell Profile Creation ===" -ForegroundColor Cyan
+
+# Check if profile exists
+if (-not (Test-Path $PROFILE)) {
+    Write-Host "Profile does not exist. Creating..." -ForegroundColor Yellow
+    # TODO: Create profile directory and file
+    # Hint: New-Item -Path $PROFILE -ItemType File -Force
+    New-Item -Path $PROFILE -ItemType File -Force | Out-Null
+    Write-Host "✓ Profile created at: $PROFILE" -ForegroundColor Green
+} else {
+    Write-Host "✓ Profile already exists at: $PROFILE" -ForegroundColor Green
+}
+
+# TODO: Create profile content
+$profileContent = @'
+# PowerShell Profile for Azure Automation Course
+# Created: {0}
+
+#region Azure Tools Configuration
+
+# Enable Az.Tools.Predictor for intelligent command suggestions
+if (Get-Module -ListAvailable -Name Az.Tools.Predictor) {
+    Import-Module Az.Tools.Predictor
+    Enable-AzPredictor -AllSession | Out-Null
+}
+
+# Import Azure modules
+Import-Module Az.Accounts -ErrorAction SilentlyContinue
+Import-Module Az.Resources -ErrorAction SilentlyContinue
+
+#endregion
+
+#region Custom Functions
+
+function Get-AzureStatus {
+    <#
+    .SYNOPSIS
+        Quick check of Azure connection status
+    .DESCRIPTION
+        Shows current Azure context including subscription, tenant, and account
+    #>
+    $context = Get-AzContext
+    if ($context) {
+        Write-Host "`n=== Azure Connection Status ===" -ForegroundColor Cyan
+        Write-Host "Subscription: $($context.Subscription.Name)" -ForegroundColor Green
+        Write-Host "Tenant:       $($context.Tenant.Id)" -ForegroundColor Green
+        Write-Host "Account:      $($context.Account.Id)" -ForegroundColor Green
+        Write-Host "Environment:  $($context.Environment.Name)" -ForegroundColor Green
+    } else {
+        Write-Host "`n⚠ Not connected to Azure" -ForegroundColor Yellow
+        Write-Host "Run: Connect-AzAccount" -ForegroundColor Gray
+    }
+}
+
+function Get-AzQuickInfo {
+    <#
+    .SYNOPSIS
+        Quick overview of Azure resources
+    .DESCRIPTION
+        Shows count of resource groups, VMs, and storage accounts in current subscription
+    #>
+    $context = Get-AzContext
+    if (-not $context) {
+        Write-Host "Not connected to Azure. Run: Connect-AzAccount" -ForegroundColor Yellow
+        return
+    }
+    
+    Write-Host "`n=== Azure Resource Summary ===" -ForegroundColor Cyan
+    Write-Host "Subscription: $($context.Subscription.Name)" -ForegroundColor Gray
+    
+    $rgCount = (Get-AzResourceGroup).Count
+    Write-Host "Resource Groups: $rgCount" -ForegroundColor Green
+    
+    $vmCount = (Get-AzVM).Count
+    Write-Host "Virtual Machines: $vmCount" -ForegroundColor Green
+    
+    $storageCount = (Get-AzStorageAccount).Count
+    Write-Host "Storage Accounts: $storageCount" -ForegroundColor Green
+}
+
+#endregion
+
+#region Aliases
+
+# Quick status check
+Set-Alias -Name azstatus -Value Get-AzureStatus
+
+# Quick resource overview
+Set-Alias -Name azinfo -Value Get-AzQuickInfo
+
+# Common Az cmdlets shortcuts
+Set-Alias -Name azvm -Value Get-AzVM
+Set-Alias -Name azrg -Value Get-AzResourceGroup
+
+#endregion
+
+#region Default Parameter Values
+
+# Set default output format for some commands
+# $PSDefaultParameterValues = @{
+#     'Get-AzVM:Status' = $true
+#     'Get-AzResourceGroup:Location' = 'eastus'
+# }
+
+#endregion
+
+#region Welcome Message
+
+Write-Host "`n🚀 Azure Automation Environment Loaded" -ForegroundColor Cyan
+Write-Host "PowerShell: $($PSVersionTable.PSVersion)" -ForegroundColor Gray
+
+# Show Azure connection status
+$azContext = Get-AzContext
+if ($azContext) {
+    Write-Host "Azure: Connected ($($azContext.Subscription.Name))" -ForegroundColor Green
+} else {
+    Write-Host "Azure: Not connected (run Connect-AzAccount)" -ForegroundColor Yellow
+}
+
+Write-Host "`nCustom Commands: azstatus, azinfo, azvm, azrg" -ForegroundColor Gray
+Write-Host "Tip: Press F2 to toggle prediction view styles`n" -ForegroundColor Gray
+
+#endregion
+'@ -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+
+# TODO: Write profile content to file
+# Hint: $profileContent | Out-File -FilePath $PROFILE -Encoding utf8 -Force
+$profileContent | Out-File -FilePath $PROFILE -Encoding utf8 -Force
+
+Write-Host "`n✓ Profile created with:" -ForegroundColor Green
+Write-Host "  • Az.Tools.Predictor auto-enable" -ForegroundColor Gray
+Write-Host "  • Get-AzureStatus function (alias: azstatus)" -ForegroundColor Gray
+Write-Host "  • Get-AzQuickInfo function (alias: azinfo)" -ForegroundColor Gray
+Write-Host "  • Common cmdlet aliases (azvm, azrg)" -ForegroundColor Gray
+Write-Host "  • Colored welcome message" -ForegroundColor Gray
+
+# TODO: Reload profile
+# Hint: . $PROFILE
+Write-Host "`nReloading profile..." -ForegroundColor Yellow
+. $PROFILE
+
+Write-Host "`n✓ Task 4 Complete!" -ForegroundColor Green
+
+#!markdown
+
+## Task 5: Master Tab Completion and IntelliSense
+
+Tab completion accelerates command entry and reduces typos. This task explores different completion methods.
+
+**Completion methods:**
+- **Tab**: Cycle through completions one at a time
+- **Ctrl+Space**: Show all completions in a menu
+- **Shift+Tab**: Cycle backwards through completions
+- **Show-Command**: GUI for cmdlet parameters
+
+**Note:** Like Task 3, these features work best in an interactive PowerShell terminal.
+
+#!pwsh
+
+# Task 5: Tab Completion Practice
+
+Write-Host "=== Task 5: Tab Completion Mastery ===" -ForegroundColor Cyan
+
+Write-Host "`nTab Completion Features:" -ForegroundColor Yellow
+Write-Host "  Tab              - Cycle through available completions" -ForegroundColor Gray
+Write-Host "  Ctrl+Space       - Show all completions in menu" -ForegroundColor Gray
+Write-Host "  Shift+Tab        - Cycle backwards" -ForegroundColor Gray
+Write-Host "  Show-Command     - GUI parameter builder" -ForegroundColor Gray
+
+Write-Host "`nPractice Exercises (try in PowerShell terminal):" -ForegroundColor Cyan
+
+Write-Host "`n1. Parameter completion:" -ForegroundColor Yellow
+Write-Host "   Type: Get-AzVM -" -ForegroundColor Gray
+Write-Host "   Press Tab repeatedly - see all parameters" -ForegroundColor Yellow
+
+Write-Host "`n2. Value completion:" -ForegroundColor Yellow
+Write-Host "   Type: Get-AzVM -ResourceGroupName " -ForegroundColor Gray
+Write-Host "   Press Tab - cycle through YOUR resource groups" -ForegroundColor Yellow
+
+Write-Host "`n3. Full menu with Ctrl+Space:" -ForegroundColor Yellow
+Write-Host "   Type: Get-AzStorageAccount -Location " -ForegroundColor Gray
+Write-Host "   Press Ctrl+Space - see all Azure regions" -ForegroundColor Yellow
+
+Write-Host "`n4. Show-Command GUI:" -ForegroundColor Yellow
+Write-Host "   Run: Show-Command Get-AzVirtualNetwork" -ForegroundColor Gray
+Write-Host "   Explore parameters, fill values, copy command" -ForegroundColor Yellow
+
+# TODO: Test Show-Command (will open GUI)
+Write-Host "`nOpening Show-Command GUI..." -ForegroundColor Cyan
+Write-Host "(Close the GUI window when done exploring)" -ForegroundColor Gray
+
+# Show-Command Get-AzStorageAccount
+# Note: Commented out to avoid blocking the notebook - uncomment to test interactively
+
+Write-Host "`n** ACTION REQUIRED **" -ForegroundColor Red
+Write-Host "Practice tab completion in PowerShell terminal:" -ForegroundColor Yellow
+Write-Host "  1. Try Tab on Get-AzVM parameters" -ForegroundColor Gray
+Write-Host "  2. Try Ctrl+Space on Get-AzVM -ResourceGroupName" -ForegroundColor Gray
+Write-Host "  3. Run: Show-Command Get-AzStorageAccount" -ForegroundColor Gray
+Write-Host "Return here after practicing (5 minutes recommended)" -ForegroundColor Yellow
+
+Write-Host "`n✓ Task 5 Complete (after practicing)!" -ForegroundColor Green
+
+#!markdown
+
+## Challenge: Create Custom Productivity Function
+
+Apply what you've learned to create a custom function that leverages Az Predictor and tab completion.
+
+**Challenge Requirements:**
+1. Create function `Get-AzResourcesByType` that accepts `-ResourceType` parameter
+2. Use tab completion to discover resource types
+3. Filter resources using Get-AzResource
+4. Add the function to your profile
+5. Test with Az Predictor suggesting the function
+
+**Bonus:** Add parameter validation with `[ValidateSet()]` for common resource types.
+
+#!pwsh
+
+# Challenge: Custom Productivity Function
+
+Write-Host "=== Challenge: Custom Function with IntelliSense ===" -ForegroundColor Cyan
+
+# TODO: Create function that accepts resource type parameter
+function Get-AzResourcesByType {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet(
+            'Microsoft.Compute/virtualMachines',
+            'Microsoft.Network/virtualNetworks',
+            'Microsoft.Storage/storageAccounts',
+            'Microsoft.Network/networkSecurityGroups',
+            'Microsoft.Compute/disks'
+        )]
+        [string]$ResourceType
+    )
+    
+    Write-Host "`n=== Azure Resources of Type: $ResourceType ===" -ForegroundColor Cyan
+    
+    # TODO: Get resources of specified type
+    # Hint: Get-AzResource -ResourceType $ResourceType
+    $resources = Get-AzResource -ResourceType $ResourceType
+    
+    if ($resources) {
+        $resources | Select-Object Name, ResourceGroupName, Location | Format-Table -AutoSize
+        Write-Host "`nTotal: $($resources.Count) resources" -ForegroundColor Green
+    } else {
+        Write-Host "No resources found of type: $ResourceType" -ForegroundColor Yellow
+    }
+}
+
+Write-Host "✓ Function created: Get-AzResourcesByType" -ForegroundColor Green
+
+# Test the function
+Write-Host "`nTesting function..." -ForegroundColor Yellow
+Get-AzResourcesByType -ResourceType 'Microsoft.Storage/storageAccounts'
+
+# TODO: Add function to profile
+Write-Host "`nAdding function to profile..." -ForegroundColor Yellow
+$functionCode = @'
+
+#region Custom Challenge Function
+
+function Get-AzResourcesByType {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet(
+            'Microsoft.Compute/virtualMachines',
+            'Microsoft.Network/virtualNetworks',
+            'Microsoft.Storage/storageAccounts',
+            'Microsoft.Network/networkSecurityGroups',
+            'Microsoft.Compute/disks'
+        )]
+        [string]$ResourceType
+    )
+    
+    Write-Host "`n=== Azure Resources of Type: $ResourceType ===" -ForegroundColor Cyan
+    $resources = Get-AzResource -ResourceType $ResourceType
+    
+    if ($resources) {
+        $resources | Select-Object Name, ResourceGroupName, Location | Format-Table -AutoSize
+        Write-Host "`nTotal: $($resources.Count) resources" -ForegroundColor Green
+    } else {
+        Write-Host "No resources found of type: $ResourceType" -ForegroundColor Yellow
+    }
+}
+
+# Alias for quick access
+Set-Alias -Name aztype -Value Get-AzResourcesByType
+
+#endregion
+'@
+
+Add-Content -Path $PROFILE -Value $functionCode
+Write-Host "✓ Function added to profile with alias: aztype" -ForegroundColor Green
+
+Write-Host "`n✓ Challenge Complete!" -ForegroundColor Green
+Write-Host "Restart PowerShell to test profile auto-loading" -ForegroundColor Yellow
+
+#!markdown
+
+## Verification Checklist
+
+Use this checklist to verify you've completed all lab objectives:
+
+### Module Installation ✓
+- [ ] Az.Tools.Predictor installed and imported
+- [ ] PSReadLine version verified
+
+### Prediction Configuration ✓
+- [ ] Az Predictor enabled for session
+- [ ] Tested InlineView and ListView modes
+- [ ] Understand F2 toggle functionality
+- [ ] Can accept suggestions with RightArrow
+
+### Inline Help Mastery ✓
+- [ ] Practiced F1 for cmdlet help
+- [ ] Practiced Alt+H for parameter help
+- [ ] Practiced Alt+A for all parameter sets
+- [ ] Can use inline help without opening browser
+
+### Profile Customization ✓
+- [ ] Profile file created (or already existed)
+- [ ] Az Predictor auto-enables on startup
+- [ ] Get-AzureStatus function works (azstatus alias)
+- [ ] Get-AzQuickInfo function works (azinfo alias)
+- [ ] Aliases functional (azvm, azrg)
+- [ ] Welcome message displays on new sessions
+
+### Tab Completion Proficiency ✓
+- [ ] Can use Tab to cycle through parameters
+- [ ] Can use Ctrl+Space for completion menu
+- [ ] Understand context-aware completions
+- [ ] Tested Show-Command GUI
+
+### Challenge Function ✓
+- [ ] Get-AzResourcesByType function created
+- [ ] Function accepts ResourceType parameter
+- [ ] ValidateSet provides tab completion
+- [ ] Function added to profile
+- [ ] aztype alias works
+
+---
+
+#!markdown
+
+## Lab Summary
+
+### What You Accomplished
+
+In this lab, you mastered PowerShell productivity features for Azure automation:
+
+1. **Intelligent Predictions**: Installed and configured Az.Tools.Predictor for context-aware command suggestions
+2. **Inline Help**: Mastered F1, Alt+H, and Alt+A for context-sensitive help without leaving command line
+3. **Profile Customization**: Created a comprehensive profile with auto-loading modules, custom functions, and aliases
+4. **Tab Completion**: Leveraged PowerShell's intelligent completion for parameters and values
+5. **Custom Functions**: Built reusable functions with parameter validation and tab completion
+
+### Key Takeaways
+
+✅ **Az.Tools.Predictor** learns from your patterns and dramatically speeds command entry  
+✅ **PSReadLine inline help** eliminates context switching to documentation  
+✅ **PowerShell profiles** save repetitive configuration and enable personalized workflows  
+✅ **Tab completion** reduces typos and aids parameter discovery  
+✅ **Custom functions** with ValidateSet provide IntelliSense for your own tools  
+
+### Next Steps
+
+- **Lab 03-2**: Configure Azure CLI productivity features (tab completion, output formats, JMESPath queries, extensions)
+- **Module 4**: Apply command-line skills to Azure networking fundamentals
+- **Practice**: Use F1/Alt+H/Alt+A daily until it becomes muscle memory
+
+### Troubleshooting Tips
+
+**Az Predictor not working:**
+- Verify Import-Module Az.Tools.Predictor in profile
+- Check Get-PSReadLineOption shows PredictionSource includes Plugin
+
+**Profile not loading:**
+- Check for syntax errors with ISE or VS Code
+- Verify $PROFILE path with Test-Path $PROFILE
+- Check execution policy with Get-ExecutionPolicy
+
+**Tab completion not showing resource names:**
+- Ensure Az modules are imported (Import-Module Az)
+- Connect to Azure with Connect-AzAccount
+- Wait a moment after connection for cache to populate
+
+---
+
+**Congratulations! You've completed Lab 03-1!** 🎉
