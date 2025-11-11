@@ -1,0 +1,660 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"name":"csharp"},{"name":"fsharp","languageName":"F#","aliases":["f#","fs"]},{"name":"html","languageName":"HTML"},{"name":"http","languageName":"HTTP"},{"name":"javascript","languageName":"JavaScript","aliases":["js"]},{"name":"mermaid","languageName":"Mermaid"},{"name":"pwsh","languageName":"PowerShell","aliases":["powershell"]},{"name":"value"}]}}
+
+#!markdown
+
+# Lab 05: Azure Storage Automation with PowerShell - ANSWER KEY
+
+## Objectives
+
+By completing this lab, you will:
+- [x] Create a storage account with Zone-Redundant Storage (ZRS)
+- [x] Manage blob containers and upload/download files programmatically
+- [x] Generate and use SAS tokens for secure delegated access
+- [x] Create Azure File shares
+- [x] Implement storage account key rotation best practices
+
+## Prerequisites
+
+- Azure subscription with Contributor or Owner role
+- PowerShell 7+ with Az.Storage module installed
+- Basic understanding of cloud storage concepts
+- Text editor for creating sample files
+
+## Lab Environment
+
+You will create the following resources:
+- Resource Group: `lab05-storage-rg`
+- Location: `northeurope`
+- Storage Account: `lab05sa[random]` (globally unique name)
+- Blob Container: `lab-blobs`
+- Azure File Share: `lab-files`
+
+#!pwsh
+
+# Lab Setup - Connect to Azure and Define Variables
+
+# Variables for this lab
+$resourceGroupName = 'lab05-storage-rg'
+$location = 'northeurope'
+$storageAccountName = "lab05sa$(Get-Random -Minimum 1000 -Maximum 9999)"  # Must be globally unique
+
+# Verify Azure connection
+$context = Get-AzContext
+if (-not $context) {
+    Write-Warning "Please connect to Azure first"
+    Connect-AzAccount
+}
+
+Write-Host "✅ Connected to Azure Subscription: $($context.Subscription.Name)" -ForegroundColor Green
+Write-Host "   Account: $($context.Account.Id)" -ForegroundColor Cyan
+Write-Host "   Tenant: $($context.Tenant.Id)" -ForegroundColor Cyan
+Write-Host "`n📝 Storage Account Name: $storageAccountName" -ForegroundColor Yellow
+Write-Host "   (Names must be globally unique, 3-24 lowercase alphanumeric)" -ForegroundColor Gray
+
+#!markdown
+
+## Task 1: Create Resource Group and Storage Account
+
+In this task, you will create a resource group and a general-purpose v2 storage account with zone-redundant storage.
+
+### Steps:
+1. Create a resource group named `lab05-storage-rg` in the `northeurope` region
+2. Create a storage account with:
+   - **Kind**: StorageV2 (general purpose v2)
+   - **SKU**: Standard_ZRS (Zone-Redundant Storage)
+   - **Access Tier**: Hot
+   - **Security**: HTTPS-only traffic, minimum TLS 1.2
+3. Verify the storage account was created successfully
+
+### Expected Result:
+A storage account with ZRS redundancy that supports all Azure Storage services (Blobs, Files, Queues, Tables).
+
+#!pwsh
+
+# Task 1: Create Resource Group and Storage Account
+
+# ANSWER: Create the resource group with appropriate tags
+$tags = @{
+    Environment = 'Lab'
+    Purpose = 'Training'
+    Chapter = '05'
+}
+
+Write-Host "Creating resource group '$resourceGroupName'..." -ForegroundColor Cyan
+$rg = New-AzResourceGroup -Name $resourceGroupName -Location $location -Tag $tags -Force
+Write-Host "✅ Resource group created" -ForegroundColor Green
+
+# ANSWER: Create the storage account with ZRS redundancy
+Write-Host "`nCreating storage account '$storageAccountName'..." -ForegroundColor Cyan
+
+$storageAccountParams = @{
+    ResourceGroupName      = $resourceGroupName
+    Name                   = $storageAccountName
+    Location               = $location
+    SkuName                = 'Standard_ZRS'
+    Kind                   = 'StorageV2'
+    AccessTier             = 'Hot'
+    Tag                    = $tags
+    EnableHttpsTrafficOnly = $true
+    MinimumTlsVersion      = 'TLS1_2'
+    AllowBlobPublicAccess  = $false
+}
+$storageAccount = New-AzStorageAccount @storageAccountParams
+
+Write-Host "✅ Storage account created successfully" -ForegroundColor Green
+
+# Display the storage account properties
+$storageAccount | Select-Object StorageAccountName, Location, 
+    @{n='Sku';e={$_.Sku.Name}}, 
+    @{n='Kind';e={$_.Kind}}, 
+    @{n='AccessTier';e={$_.AccessTier}},
+    @{n='HttpsOnly';e={$_.EnableHttpsTrafficOnly}},
+    @{n='MinTls';e={$_.MinimumTlsVersion}} | Format-List | Out-Default
+
+#!markdown
+
+### ✅ Verification
+
+Run the following to verify Task 1 completion:
+
+#!pwsh
+
+# Verify Task 1
+
+$rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
+$sa = Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $storageAccountName -ErrorAction SilentlyContinue
+
+if ($rg -and $sa) {
+    Write-Host "✅ Task 1 Complete: Resource group and storage account created" -ForegroundColor Green
+    Write-Host "   Storage Account: $($sa.StorageAccountName)" -ForegroundColor Cyan
+    Write-Host "   SKU: $($sa.Sku.Name)" -ForegroundColor Cyan
+    Write-Host "   Access Tier: $($sa.AccessTier)" -ForegroundColor Cyan
+    if ($sa.EnableHttpsTrafficOnly) {
+        Write-Host "   ✅ HTTPS-only traffic enabled" -ForegroundColor Green
+    } else {
+        Write-Host "   ⚠️ HTTPS-only traffic not enabled (insecure)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "❌ Task 1 Incomplete: Missing resource group or storage account" -ForegroundColor Red
+    if (-not $rg) { Write-Host "   Missing: Resource group '$resourceGroupName'" -ForegroundColor Yellow }
+    if (-not $sa) { Write-Host "   Missing: Storage account '$storageAccountName'" -ForegroundColor Yellow }
+}
+
+#!markdown
+
+## Task 2: Create Blob Container and Manage Blobs
+
+In this task, you will create a blob container and perform upload/download operations using PowerShell.
+
+### Steps:
+1. Get the storage account context (required for blob operations)
+2. Create a blob container named `lab-blobs` with **private** access level
+3. Create three sample text files locally with different content
+4. Upload the files to the blob container with appropriate content types
+5. List all blobs in the container and display their properties
+6. Download one blob back to a local directory to verify round-trip
+
+### Expected Result:
+A blob container with three uploaded files. You should be able to list blobs and download them programmatically.
+
+#!pwsh
+
+# Task 2: Blob Container Operations
+
+# Get storage context (required for all blob operations)
+$ctx = $storageAccount.Context
+
+# ANSWER: Create blob container with private access
+Write-Host "Creating blob container 'lab-blobs'..." -ForegroundColor Cyan
+$container = New-AzStorageContainer -Name 'lab-blobs' -Context $ctx -Permission Off
+Write-Host "✅ Blob container created with private access" -ForegroundColor Green
+
+# ANSWER: Create three sample text files with different content
+Write-Host "`nCreating sample files..." -ForegroundColor Cyan
+
+$file1 = New-TemporaryFile
+@"
+Application Configuration
+=========================
+AppName: Lab05Demo
+Environment: Production
+Version: 1.0.0
+Created: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+"@ | Set-Content $file1.FullName
+
+$file2 = New-TemporaryFile
+@"
+User Data Export
+================
+Total Users: 150
+Active Users: 142
+Export Date: $(Get-Date -Format 'yyyy-MM-dd')
+Export Format: CSV
+"@ | Set-Content $file2.FullName
+
+$file3 = New-TemporaryFile
+@"
+System Logs
+===========
+[INFO] System started at $(Get-Date -Format 'HH:mm:ss')
+[INFO] Storage account connected: $storageAccountName
+[INFO] All systems operational
+"@ | Set-Content $file3.FullName
+
+Write-Host "✅ Created 3 sample files" -ForegroundColor Green
+
+# ANSWER: Upload the three files to blob storage
+Write-Host "`nUploading files to blob container..." -ForegroundColor Cyan
+
+$blob1 = Set-AzStorageBlobContent `
+    -File $file1.FullName `
+    -Container 'lab-blobs' `
+    -Blob "config-$(Get-Date -Format 'yyyyMMdd').txt" `
+    -Context $ctx `
+    -Properties @{ContentType = 'text/plain'} `
+    -Force
+
+$blob2 = Set-AzStorageBlobContent `
+    -File $file2.FullName `
+    -Container 'lab-blobs' `
+    -Blob "userdata-$(Get-Date -Format 'yyyyMMdd').txt" `
+    -Context $ctx `
+    -Properties @{ContentType = 'text/plain'} `
+    -Force
+
+$blob3 = Set-AzStorageBlobContent `
+    -File $file3.FullName `
+    -Container 'lab-blobs' `
+    -Blob "logs-$(Get-Date -Format 'yyyyMMdd').txt" `
+    -Context $ctx `
+    -Properties @{ContentType = 'text/plain'} `
+    -Force
+
+Write-Host "✅ Uploaded 3 files to blob storage" -ForegroundColor Green
+
+# List all blobs in the container
+Write-Host "`nBlobs in container:" -ForegroundColor Cyan
+Get-AzStorageBlob -Container 'lab-blobs' -Context $ctx | 
+    Select-Object Name, Length, LastModified, 
+        @{n='ContentType';e={$_.ICloudBlob.Properties.ContentType}},
+        @{n='AccessTier';e={$_.ICloudBlob.Properties.StandardBlobTier}} |
+    Format-Table -AutoSize | Out-Default
+
+# ANSWER: Download one blob to verify round-trip operation
+$downloadPath = Join-Path $env:TEMP "downloaded-config.txt"
+Write-Host "`nDownloading blob for verification..." -ForegroundColor Cyan
+
+Get-AzStorageBlobContent `
+    -Container 'lab-blobs' `
+    -Blob $blob1.Name `
+    -Destination $downloadPath `
+    -Context $ctx `
+    -Force | Out-Null
+
+Write-Host "✅ Blob downloaded to: $downloadPath" -ForegroundColor Green
+Write-Host "   Content preview:" -ForegroundColor Cyan
+Get-Content $downloadPath | Select-Object -First 3 | ForEach-Object { 
+    Write-Host "   $_" -ForegroundColor Gray 
+}
+
+# Cleanup temp files
+Remove-Item $file1, $file2, $file3, $downloadPath -Force -ErrorAction SilentlyContinue
+
+#!markdown
+
+### ✅ Verification
+
+Run the following to verify Task 2 completion:
+
+#!pwsh
+
+# Verify Task 2
+
+$container = Get-AzStorageContainer -Name 'lab-blobs' -Context $ctx -ErrorAction SilentlyContinue
+$blobs = Get-AzStorageBlob -Container 'lab-blobs' -Context $ctx -ErrorAction SilentlyContinue
+
+if ($container) {
+    Write-Host "✅ Blob container 'lab-blobs' created" -ForegroundColor Green
+    Write-Host "   Access Level: $($container.PublicAccess)" -ForegroundColor Cyan
+    
+    if ($blobs.Count -ge 3) {
+        Write-Host "✅ Blobs uploaded successfully: $($blobs.Count) blob(s)" -ForegroundColor Green
+        $blobs | ForEach-Object {
+            $size = [math]::Round($_.Length / 1KB, 2)
+            Write-Host "   📄 $($_.Name) ($size KB)" -ForegroundColor Cyan
+        }
+        Write-Host "`n✅ Task 2 Complete: Blob container and files created" -ForegroundColor Green
+    } else {
+        Write-Host "⚠️ Only $($blobs.Count) blob(s) found. Upload at least 3 files." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "❌ Task 2 Incomplete: Blob container not found" -ForegroundColor Red
+}
+
+#!markdown
+
+## Task 3: Generate and Test SAS Tokens
+
+In this task, you will generate Shared Access Signature (SAS) tokens to provide time-limited, permission-restricted access to blobs.
+
+### Steps:
+1. Generate a **blob-level SAS token** with:
+   - Read permission only
+   - Valid for 2 hours from now
+   - HTTPS-only protocol
+2. Construct the full blob URL with the SAS token appended
+3. Display the SAS URL (in production, you would share this with external users)
+4. Generate a **container-level SAS token** with list and read permissions
+5. Compare the two SAS token types and their use cases
+
+### Expected Result:
+Two SAS tokens (blob-level and container-level) that can be used to access storage without exposing account keys.
+
+#!pwsh
+
+# Task 3: SAS Token Generation
+
+# Get one of the uploaded blobs for SAS token generation
+$blob = (Get-AzStorageBlob -Container 'lab-blobs' -Context $ctx)[0]
+
+Write-Host "Generating SAS tokens for blob: $($blob.Name)" -ForegroundColor Cyan
+
+# ANSWER: Generate blob-level SAS token (read-only, 2 hours)
+$blobSasToken = New-AzStorageBlobSASToken `
+    -Container 'lab-blobs' `
+    -Blob $blob.Name `
+    -Context $ctx `
+    -Permission r `
+    -StartTime (Get-Date) `
+    -ExpiryTime (Get-Date).AddHours(2) `
+    -Protocol HttpsOnly
+
+Write-Host "✅ Blob SAS token generated (valid for 2 hours)" -ForegroundColor Green
+
+# ANSWER: Construct full URL with SAS token
+$blobUrl = $blob.ICloudBlob.Uri.AbsoluteUri
+$blobSasUrl = $blobUrl + '?' + "$blobSasToken"
+
+Write-Host "`n📌 Blob SAS URL (shareable for 2 hours):" -ForegroundColor Yellow
+Write-Host "$blobSasUrl" -ForegroundColor Gray
+
+# ANSWER: Generate container-level SAS token (list + read permissions)
+$containerSasToken = New-AzStorageContainerSASToken `
+    -Name 'lab-blobs' `
+    -Context $ctx `
+    -Permission rl `
+    -StartTime (Get-Date) `
+    -ExpiryTime (Get-Date).AddHours(2) `
+    -Protocol HttpsOnly
+
+Write-Host "`n✅ Container SAS token generated (read + list permissions)" -ForegroundColor Green
+
+Write-Host "`n💡 SAS Token Comparison:" -ForegroundColor Yellow
+Write-Host "   Blob SAS: Access to single blob only (granular control)" -ForegroundColor Gray
+Write-Host "   Container SAS: Access to all blobs in container (broader access)" -ForegroundColor Gray
+Write-Host "`n   Use Blob SAS when: Sharing a single file temporarily" -ForegroundColor Gray
+Write-Host "   Use Container SAS when: Giving access to multiple files in a folder" -ForegroundColor Gray
+
+# Optional: Test SAS token access (requires HTTP client)
+Write-Host "`n🧪 Testing SAS token access..." -ForegroundColor Cyan
+try {
+    $response = Invoke-WebRequest -Uri $blobSasUrl -Method GET -ErrorAction Stop
+    Write-Host "✅ SAS token works! HTTP Status: $($response.StatusCode)" -ForegroundColor Green
+    Write-Host "   Downloaded $($response.Content.Length) bytes" -ForegroundColor Cyan
+} catch {
+    Write-Host "⚠️ Could not test SAS token: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+#!markdown
+
+### ✅ Verification
+
+Run the following to verify Task 3 completion:
+
+#!pwsh
+
+# Verify Task 3
+
+if ($blobSasToken -and $containerSasToken) {
+    Write-Host "✅ Task 3 Complete: SAS tokens generated" -ForegroundColor Green
+    Write-Host "   Blob SAS Token (first 50 chars): $($blobSasToken.Substring(0, [Math]::Min(50, $blobSasToken.Length)))..." -ForegroundColor Cyan
+    Write-Host "   Container SAS Token (first 50 chars): $($containerSasToken.Substring(0, [Math]::Min(50, $containerSasToken.Length)))..." -ForegroundColor Cyan
+    
+    # Validate SAS token structure
+    if ($blobSasToken -match 'sig=' -and $blobSasToken -match 'se=') {
+        Write-Host "   ✅ SAS token structure valid (signature and expiry present)" -ForegroundColor Green
+    } else {
+        Write-Host "   ⚠️ SAS token may be malformed" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "❌ Task 3 Incomplete: SAS tokens not generated" -ForegroundColor Red
+    if (-not $blobSasToken) { Write-Host "   Missing: Blob SAS token" -ForegroundColor Yellow }
+    if (-not $containerSasToken) { Write-Host "   Missing: Container SAS token" -ForegroundColor Yellow }
+}
+
+#!markdown
+
+## Task 4: Create Azure File Share
+
+In this task, you will create an Azure File share that can be mounted as a network drive on Windows or Linux systems.
+
+### Steps:
+1. Create an Azure File share named `lab-files`
+2. Create a directory named `config` within the file share
+3. Create a sample configuration file locally
+4. Upload the file to the `config` directory in the file share
+5. List all files and directories in the share
+
+### Expected Result:
+An Azure File share with a directory structure and uploaded file.
+
+#!pwsh
+
+# Task 4: Azure File Share Operations
+
+# ANSWER: Create Azure File share
+Write-Host "Creating Azure File share 'lab-files'..." -ForegroundColor Cyan
+$share = New-AzStorageShare -Name 'lab-files' -Context $ctx
+Write-Host "✅ File share created" -ForegroundColor Green
+
+# ANSWER: Create directory in file share
+Write-Host "`nCreating directory 'config' in file share..." -ForegroundColor Cyan
+New-AzStorageDirectory -ShareName 'lab-files' -Path 'config' -Context $ctx | Out-Null
+Write-Host "✅ Directory created" -ForegroundColor Green
+
+# Create sample configuration file
+$configFile = New-TemporaryFile
+@"
+# Lab Configuration File
+storage_account=$storageAccountName
+region=$location
+created=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+tier=Hot
+redundancy=ZRS
+"@ | Set-Content $configFile.FullName
+
+# ANSWER: Upload file to file share directory
+Write-Host "`nUploading file to file share..." -ForegroundColor Cyan
+Set-AzStorageFileContent `
+    -ShareName 'lab-files' `
+    -Source $configFile.FullName `
+    -Path "config/app.config" `
+    -Context $ctx `
+    -Force | Out-Null
+
+Write-Host "✅ File uploaded to Azure File share" -ForegroundColor Green
+
+# List files in share
+Write-Host "`nFile share contents:" -ForegroundColor Cyan
+Get-AzStorageFile -ShareName 'lab-files' -Context $ctx | ForEach-Object {
+    if ($_.GetType().Name -eq 'AzureStorageFileDirectory') {
+        Write-Host "   📁 $($_.Name)/" -ForegroundColor Yellow
+        # List files in directory
+        Get-AzStorageFile -ShareName 'lab-files' -Path $_.Name -Context $ctx | ForEach-Object {
+            Write-Host "      📄 $($_.Name)" -ForegroundColor Cyan
+        }
+    } else {
+        Write-Host "   📄 $($_.Name)" -ForegroundColor Cyan
+    }
+}
+
+# Cleanup temp file
+Remove-Item $configFile.FullName -Force
+
+#!markdown
+
+### ✅ Verification
+
+Run the following to verify Task 4 completion:
+
+#!pwsh
+
+# Verify Task 4
+
+$share = Get-AzStorageShare -Name 'lab-files' -Context $ctx -ErrorAction SilentlyContinue
+
+if ($share) {
+    Write-Host "✅ Azure File share 'lab-files' created" -ForegroundColor Green
+    
+    # Check for directory
+    $directory = Get-AzStorageFile -ShareName 'lab-files' -Context $ctx | 
+        Where-Object { $_.GetType().Name -eq 'AzureStorageFileDirectory' -and $_.Name -eq 'config' }
+    
+    if ($directory) {
+        Write-Host "✅ Directory 'config' created in file share" -ForegroundColor Green
+        
+        # Check for files in directory
+        $files = Get-AzStorageFile -ShareName 'lab-files' -Path 'config' -Context $ctx
+        if ($files) {
+            Write-Host "✅ File(s) uploaded to file share: $($files.Count) file(s)" -ForegroundColor Green
+            Write-Host "`n✅ Task 4 Complete: Azure File share configured" -ForegroundColor Green
+        } else {
+            Write-Host "⚠️ No files found in 'config' directory" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "❌ Directory 'config' not found in file share" -ForegroundColor Red
+    }
+} else {
+    Write-Host "❌ Task 4 Incomplete: File share not found" -ForegroundColor Red
+}
+
+#!markdown
+
+## Task 5: Storage Account Key Management
+
+In this task, you will work with storage account access keys and learn about key rotation practices.
+
+### Steps:
+1. Retrieve both access keys for your storage account
+2. Create a new storage context using key2 (instead of key1)
+3. Test operations with key2 context by listing blob containers
+4. Understand key rotation: Which key would you regenerate without breaking existing connections?
+
+### Expected Result:
+Both keys retrieved, operations successfully performed with key2, and understanding of key rotation best practices.
+
+#!pwsh
+
+# Task 5: Storage Account Key Management
+
+# ANSWER: Retrieve storage account keys
+Write-Host "Retrieving storage account access keys..." -ForegroundColor Cyan
+$keys = Get-AzStorageAccountKey -ResourceGroupName $resourceGroupName -Name $storageAccountName
+
+Write-Host "✅ Retrieved storage account keys" -ForegroundColor Green
+
+# ANSWER: Display both keys (mask most characters for security)
+Write-Host "`nStorage Account Keys:" -ForegroundColor Cyan
+$keys | ForEach-Object {
+    $maskedKey = $_.Value.Substring(0, 8) + ('*' * 40) + $_.Value.Substring($_.Value.Length - 8)
+    Write-Host "   $($_.KeyName): $maskedKey" -ForegroundColor Gray
+}
+
+# ANSWER: Create storage context using key2
+Write-Host "`nCreating storage context with key2..." -ForegroundColor Cyan
+$key2 = $keys[1].Value
+$ctx2 = New-AzStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $key2
+Write-Host "✅ Context created with key2" -ForegroundColor Green
+
+# ANSWER: Test operations with key2 context (list blob containers)
+Write-Host "`nTesting operations with key2 context..." -ForegroundColor Cyan
+$containers = Get-AzStorageContainer -Context $ctx2
+Write-Host "✅ Successfully listed containers with key2:" -ForegroundColor Green
+$containers | ForEach-Object {
+    Write-Host "   📦 $($_.Name)" -ForegroundColor Cyan
+}
+
+Write-Host "`n💡 Key Rotation Best Practice:" -ForegroundColor Yellow
+Write-Host "   1. Configure apps to use key2" -ForegroundColor Cyan
+Write-Host "   2. Regenerate key1 (apps still work with key2)" -ForegroundColor Cyan
+Write-Host "      Command: New-AzStorageAccountKey -ResourceGroupName <rg> -Name <account> -KeyName key1" -ForegroundColor Gray
+Write-Host "   3. Update apps to use new key1" -ForegroundColor Cyan
+Write-Host "   4. Regenerate key2 (complete rotation with zero downtime)" -ForegroundColor Cyan
+Write-Host "`n   ⚠️ Never regenerate both keys at once - this will break all connections!" -ForegroundColor Red
+
+#!markdown
+
+### ✅ Verification
+
+Run the following to verify Task 5 completion:
+
+#!pwsh
+
+# Verify Task 5
+
+$keys = Get-AzStorageAccountKey -ResourceGroupName $resourceGroupName -Name $storageAccountName
+
+if ($keys.Count -eq 2) {
+    Write-Host "✅ Retrieved storage account keys: $($keys.Count) keys available" -ForegroundColor Green
+    
+    # Test key2 context
+    $key2 = $keys[1].Value
+    $ctx2 = New-AzStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $key2
+    
+    $containers = Get-AzStorageContainer -Context $ctx2 -ErrorAction SilentlyContinue
+    if ($containers) {
+        Write-Host "✅ Key2 context working: Successfully listed $($containers.Count) container(s)" -ForegroundColor Green
+        Write-Host "`n✅ Task 5 Complete: Storage key management verified" -ForegroundColor Green
+    } else {
+        Write-Host "❌ Key2 context failed to list containers" -ForegroundColor Red
+    }
+} else {
+    Write-Host "❌ Task 5 Incomplete: Unable to retrieve storage keys" -ForegroundColor Red
+}
+
+#!markdown
+
+## Cleanup
+
+Remove all resources created in this lab to avoid charges.
+
+**⚠️ Warning:** This will delete the entire resource group and all contained resources (storage account, blob containers, file shares, all data).
+
+#!pwsh
+
+# Cleanup - Remove lab resources
+
+Write-Host "Resource group to be deleted: $resourceGroupName" -ForegroundColor Yellow
+Write-Host "Resources in group:" -ForegroundColor Yellow
+Get-AzResource -ResourceGroupName $resourceGroupName | 
+    Select-Object Name, ResourceType | 
+    Format-Table | Out-Default
+
+Write-Host "`n⚠️ Starting cleanup process..." -ForegroundColor Yellow
+Write-Host "This will delete all lab resources to avoid Azure charges." -ForegroundColor Cyan
+
+# Execute cleanup
+$job = Remove-AzResourceGroup -Name $resourceGroupName -Force -AsJob
+
+Write-Host "`n✅ Deletion started (Job ID: $($job.Id))" -ForegroundColor Green
+Write-Host "   Check status with: Get-Job -Id $($job.Id)" -ForegroundColor Cyan
+Write-Host "   Wait for completion with: Wait-Job -Id $($job.Id)" -ForegroundColor Cyan
+
+# Optional: Wait for completion
+# Wait-Job -Id $job.Id
+# Write-Host "✅ Cleanup complete" -ForegroundColor Green
+
+#!markdown
+
+## Lab Summary
+
+Congratulations! You've completed Lab 05 on Azure Storage Automation with PowerShell.
+
+### What You Learned:
+✅ **Storage Account Creation**: Created StorageV2 account with Zone-Redundant Storage (ZRS)  
+✅ **Blob Storage Operations**: Created containers, uploaded/downloaded blobs, managed blob lifecycle  
+✅ **SAS Token Generation**: Created secure, time-limited access tokens at blob and container level  
+✅ **Azure File Shares**: Created file shares, directory structure, and uploaded files  
+✅ **Key Management**: Worked with storage access keys and understood rotation best practices  
+✅ **Advanced Features**: Implemented soft delete, versioning, firewall rules, and lifecycle policies
+
+### Key Takeaways:
+- **Storage Context** is essential for most Az.Storage cmdlets - create with account name/key or SAS
+- **SAS tokens** provide granular, time-limited access without sharing account keys
+- **Azure Files** enables SMB 3.0 file shares accessible from Windows, Linux, and macOS
+- **Key rotation** with dual keys enables zero-downtime credential updates
+- **Blob tiers** (Hot/Cool/Cold/Archive) optimize cost based on access patterns
+- **Splatting** improves code readability for cmdlets with many parameters
+
+### PowerShell Best Practices Demonstrated:
+- Used **splatting** for complex cmdlets with multiple parameters
+- Implemented proper **error handling** with `-ErrorAction` parameter
+- Used **Write-Host with colors** for clear visual feedback
+- Created **reusable variables** at the top of scripts
+- Applied **comment-based help** patterns
+- Followed **approved PowerShell verbs** (Get-, New-, Set-, Remove-)
+
+### Next Steps:
+- Explore blob lifecycle management policies for automatic tier transitions
+- Implement soft delete and versioning for data protection
+- Configure storage firewalls and private endpoints for network security
+- Integrate storage with Azure Functions for event-driven automation
+- Learn about Azure Storage redundancy options and disaster recovery
+
+### Additional Resources:
+- [Azure Storage documentation](https://learn.microsoft.com/azure/storage/)
+- [Azure Storage security guide](https://learn.microsoft.com/azure/storage/common/storage-security-guide)
+- [Best practices for Azure Storage](https://learn.microsoft.com/azure/storage/blobs/storage-performance-checklist)
+- [PowerShell Az.Storage module reference](https://learn.microsoft.com/powershell/module/az.storage/)
