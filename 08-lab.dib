@@ -1,0 +1,1081 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"name":"csharp"},{"name":"fsharp","languageName":"F#","aliases":["f#","fs"]},{"name":"html","languageName":"HTML"},{"name":"http","languageName":"HTTP"},{"name":"javascript","languageName":"JavaScript","aliases":["js"]},{"name":"mermaid","languageName":"Mermaid"},{"name":"pwsh","languageName":"PowerShell","aliases":["powershell"]},{"name":"value"}]}}
+
+#!markdown
+
+# Lab 08: Infrastructure as Code with Bicep
+
+**Module:** 08 - Bicep Templates
+
+**Estimated Time:** 60 minutes
+
+## Objectives
+
+By the end of this lab, you will be able to:
+1. Install and configure Bicep CLI and VS Code extension
+2. Create basic Bicep templates with parameters, variables, and outputs
+3. Use parameter decorators for validation and documentation
+4. Deploy resources using Bicep templates
+5. Validate templates and preview changes with what-if
+6. Create reusable Bicep modules
+7. Use Bicep parameters files for environment-specific configurations
+8. Implement Bicep best practices for security and maintainability
+9. Deploy multi-tier infrastructure with modules
+
+## Prerequisites
+
+- Azure subscription with Contributor access
+- PowerShell 7+ with Az modules installed
+- Azure CLI installed (for Bicep commands)
+- Completed Lab 02 (Azure CLI and PowerShell setup)
+- Basic understanding of Azure resources (storage, networking, VMs)
+
+#!markdown
+
+## Task 1: Install and Configure Bicep
+
+In this task, you'll install the Bicep CLI and VS Code extension to author and deploy Bicep templates.
+
+**Key Concept:** Bicep is a domain-specific language (DSL) that compiles to ARM templates. It provides cleaner syntax and better tooling than raw JSON.
+
+#!pwsh
+
+# TODO: Check if Azure CLI is installed
+# HINT: Use Get-Command az -ErrorAction SilentlyContinue
+
+# TODO: Verify you're logged in to Azure
+# HINT: Use az account show
+
+# TODO: Install Bicep CLI (if not already installed)
+# HINT: Use: az bicep install
+
+# TODO: Upgrade Bicep to the latest version
+# HINT: Use: az bicep upgrade
+
+# TODO: Check Bicep version
+# HINT: Use: az bicep version
+
+# TODO: Set Azure CLI defaults for this lab
+$resourceGroup = "rg-bicep-lab-$(Get-Random -Maximum 9999)"
+$location = "eastus"
+
+# HINT: Use az configure to set default resource group and location
+# HINT: az configure --defaults location=eastus group=rg-name
+
+Write-Host "`n✓ Bicep CLI configured" -ForegroundColor Green
+Write-Host "Resource Group: $resourceGroup" -ForegroundColor Cyan
+Write-Host "Location: $location" -ForegroundColor Cyan
+
+#!markdown
+
+### Verification
+
+Run the following to confirm Bicep is installed:
+
+#!pwsh
+
+az bicep version
+Write-Host "`nBicep CLI installed successfully!" -ForegroundColor Green
+
+#!markdown
+
+## Task 2: Create Resource Group and Lab Directory
+
+In this task, you'll create a resource group for deploying Bicep templates and set up a working directory for lab files.
+
+#!pwsh
+
+# Create lab directory
+$labPath = "$env:USERPROFILE\bicep-lab"
+
+# TODO: Create the lab directory if it doesn't exist
+# HINT: Use New-Item with -ItemType Directory -Force
+
+# TODO: Change to the lab directory
+# HINT: Use Set-Location or cd
+
+# TODO: Create Azure resource group
+# HINT: Use az group create with --name and --location parameters
+
+Write-Host "`n✓ Lab environment ready" -ForegroundColor Green
+Write-Host "Lab Directory: $labPath" -ForegroundColor Cyan
+Write-Host "Resource Group: $resourceGroup" -ForegroundColor Cyan
+
+#!markdown
+
+### Verification
+
+Run the following to confirm the resource group was created:
+
+#!pwsh
+
+az group show --name $resourceGroup --output table
+
+#!markdown
+
+## Task 3: Create Your First Bicep Template
+
+In this task, you'll create a simple Bicep template to deploy a storage account. You'll learn the basic structure: parameters, variables, resources, and outputs.
+
+**Template Structure:**
+1. **Parameters** - Inputs provided at deployment time
+2. **Variables** - Computed values
+3. **Resources** - Azure resources to create
+4. **Outputs** - Return values after deployment
+
+#!pwsh
+
+# Define the Bicep template content
+$storageBicep = @'
+// storage.bicep - Basic Storage Account Template
+
+@description('Storage account name (3-24 chars, lowercase alphanumeric)')
+@minLength(3)
+@maxLength(24)
+param storageAccountName string
+
+@description('Azure region for deployment')
+param location string = resourceGroup().location
+
+@description('Storage account SKU')
+@allowed([
+  'Standard_LRS'
+  'Standard_GRS'
+  'Premium_LRS'
+])
+param storageSku string = 'Standard_LRS'
+
+@description('Resource tags')
+param tags object = {
+  Environment: 'Lab'
+  ManagedBy: 'Bicep'
+}
+
+// Variables
+var storageAccountNameClean = toLower(storageAccountName)
+
+// Storage Account Resource
+resource storage 'Microsoft.Storage/storageAccounts@2025-01-01' = {
+  name: storageAccountNameClean
+  location: location
+  tags: tags
+  sku: {
+    name: storageSku
+  }
+  kind: 'StorageV2'
+  properties: {
+    accessTier: 'Hot'
+    supportsHttpsTrafficOnly: true
+    minimumTlsVersion: 'TLS1_2'
+    allowBlobPublicAccess: false
+  }
+}
+
+// Outputs
+@description('Storage account resource ID')
+output storageAccountId string = storage.id
+
+@description('Storage account name')
+output storageAccountName string = storage.name
+
+@description('Primary blob endpoint')
+output blobEndpoint string = storage.properties.primaryEndpoints.blob
+
+@description('Primary queue endpoint (safe dereference)')
+output queueEndpoint string = storage.properties.primaryEndpoints.?queue ?? 'Not available'
+'@
+
+# TODO: Save the Bicep template to a file named 'storage.bicep'
+# HINT: Use Out-File with -FilePath and -Encoding UTF8
+
+Write-Host "`n✓ Created Bicep template: storage.bicep" -ForegroundColor Green
+Write-Host "  - 4 parameters (name, location, SKU, tags)" -ForegroundColor Gray
+Write-Host "  - 1 resource (Storage Account)" -ForegroundColor Gray
+Write-Host "  - 4 outputs (ID, name, blob endpoint, queue endpoint with safe dereference)" -ForegroundColor Gray
+
+#!markdown
+
+### Verification
+
+Run the following to confirm the file was created and view its content:
+
+#!pwsh
+
+Get-Item storage.bicep | Select-Object Name, Length, LastWriteTime
+Write-Host "`n--- Bicep Template Preview ---" -ForegroundColor Cyan
+Get-Content storage.bicep | Select-Object -First 15
+
+#!markdown
+
+## Task 4: Build and Validate Bicep Template
+
+In this task, you'll compile the Bicep template to ARM JSON and validate it against Azure before deployment.
+
+**Key Concept:** The `bicep build` command compiles Bicep to ARM JSON. The `az deployment group validate` command checks if the template would successfully deploy without actually creating resources.
+
+#!pwsh
+
+# TODO: Build the Bicep template to ARM JSON
+# HINT: Use az bicep build --file storage.bicep
+
+# Check if ARM JSON was generated
+if (Test-Path 'storage.json') {
+    Write-Host "✓ ARM template generated: storage.json" -ForegroundColor Green
+    $armContent = Get-Content 'storage.json' -Raw | ConvertFrom-Json
+    $bicepContent = Get-Content 'storage.bicep' -Raw
+    
+    Write-Host "  Bicep size: $($bicepContent.Length) characters" -ForegroundColor Gray
+    Write-Host "  ARM size: $(($armContent | ConvertTo-Json -Depth 10).Length) characters" -ForegroundColor Gray
+}
+
+# Generate a unique storage account name
+$storageAccountName = "stlab$(Get-Random -Maximum 9999)"
+
+# TODO: Validate the template against Azure
+# HINT: Use az deployment group validate with --template-file and --parameters
+
+Write-Host "`n✓ Template validation completed" -ForegroundColor Green
+
+#!markdown
+
+### Verification
+
+If validation succeeds, you'll see `"provisioningState": "Succeeded"` in the output.
+
+#!markdown
+
+## Task 5: Deploy Bicep Template
+
+In this task, you'll deploy the Bicep template to create a storage account in Azure.
+
+**Important:** Bicep automatically handles resource dependencies. You don't need to manually specify deployment order.
+
+#!pwsh
+
+# TODO: Deploy the Bicep template
+# HINT: Use az deployment group create with --template-file and --parameters
+# HINT: Pass storageAccountName, storageSku='Standard_LRS' as parameters
+# HINT: Add --output json to get structured output
+
+Write-Host "`nDeploying storage account: $storageAccountName" -ForegroundColor Yellow
+
+# TODO: Execute the deployment and store result in $deployment variable
+
+# Display deployment outputs
+if ($deployment) {
+    Write-Host "`n✓ Deployment successful!" -ForegroundColor Green
+    Write-Host "`nDeployment Outputs:" -ForegroundColor Cyan
+    $deployment.properties.outputs.PSObject.Properties | ForEach-Object {
+        Write-Host "  $($_.Name): $($_.Value.value)" -ForegroundColor White
+    }
+}
+
+#!markdown
+
+### Verification
+
+Run the following to confirm the storage account was created:
+
+#!pwsh
+
+az storage account show --name $storageAccountName --resource-group $resourceGroup --output table
+
+# View deployment history
+Write-Host "`nDeployment History:" -ForegroundColor Cyan
+az deployment group list --resource-group $resourceGroup --output table
+
+#!markdown
+
+## Task 6: Use What-If to Preview Changes
+
+In this task, you'll use the `what-if` command to preview what would change if you redeployed with different parameters.
+
+**Key Concept:** What-if shows you the changes before they happen - similar to a dry run. This is crucial for production deployments.
+
+**Legend:**
+- `+` Create (green)
+- `~` Modify (yellow)
+- `-` Delete (red)
+- `=` No change (gray)
+
+#!pwsh
+
+# TODO: Run what-if to preview changes with a different SKU
+# HINT: Use az deployment group what-if
+# HINT: Change storageSku to 'Standard_GRS' to see what would change
+
+Write-Host "`nPreviewing changes with Standard_GRS SKU..." -ForegroundColor Yellow
+
+# TODO: Execute what-if command
+# HINT: az deployment group what-if --template-file storage.bicep --parameters storageAccountName=$storageAccountName storageSku='Standard_GRS'
+
+Write-Host "`n✓ What-if preview completed" -ForegroundColor Green
+Write-Host "Notice the ~ (modify) symbol showing the SKU would change" -ForegroundColor Gray
+
+#!markdown
+
+### Verification
+
+The what-if output should show a modification (~) to the storage account's SKU property.
+
+#!markdown
+
+## Task 7: Create a Bicep Module
+
+In this task, you'll create a reusable Bicep module for virtual networks. Modules enable code reuse and better organization.
+
+**Key Concept:** Modules are Bicep files that can be referenced from other templates. Think of them as functions - write once, use many times.
+
+**Modern Syntax:** As of Bicep v0.4+, the `name` property on module declarations is no longer required. This lab uses the modern approach.
+
+#!pwsh
+
+# Create modules directory
+# TODO: Create a 'modules' directory
+# HINT: Use New-Item -ItemType Directory -Force
+
+# Define the VNet module
+$vnetModule = @'
+// vnet.bicep - Virtual Network Module
+
+@description('Virtual network name')
+param vnetName string
+
+@description('Azure region')
+param location string = resourceGroup().location
+
+@description('Address prefix for VNet')
+param addressPrefix string = '10.0.0.0/16'
+
+@description('Subnet configurations')
+param subnets array = [
+  {
+    name: 'default'
+    addressPrefix: '10.0.0.0/24'
+  }
+]
+
+// Virtual Network
+resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
+  name: vnetName
+  location: location
+  properties: {
+    addressSpace: {
+      addressPrefixes: [
+        addressPrefix
+      ]
+    }
+    subnets: [for subnet in subnets: {
+      name: subnet.name
+      properties: {
+        addressPrefix: subnet.addressPrefix
+      }
+    }]
+  }
+}
+
+// Outputs
+@description('Virtual network resource ID')
+output vnetId string = vnet.id
+
+@description('Virtual network name')
+output vnetName string = vnet.name
+
+@description('Subnet resource IDs')
+output subnetIds array = [for (subnet, i) in subnets: vnet.properties.subnets[i].id]
+'@
+
+# TODO: Save the module to 'modules/vnet.bicep'
+# HINT: Use Out-File with appropriate path
+
+Write-Host "`n✓ Created VNet module: modules/vnet.bicep" -ForegroundColor Green
+
+#!markdown
+
+### Verification
+
+Run the following to confirm the module file was created:
+
+#!pwsh
+
+Get-Item modules/vnet.bicep | Select-Object Name, Length
+Write-Host "`nModule content preview:" -ForegroundColor Cyan
+Get-Content modules/vnet.bicep | Select-Object -First 10
+
+#!markdown
+
+## Task 8: Use Module in Main Template
+
+In this task, you'll create a main template that uses the VNet module you just created.
+
+**Key Concept:** The `module` keyword references another Bicep file. Bicep handles the dependencies automatically.
+
+#!pwsh
+
+# Define main template that uses the module
+$mainBicep = @'
+// main.bicep - Main template with modules
+
+@description('Resource name prefix')
+param prefix string = 'biclab'
+
+@description('Azure region')
+param location string = resourceGroup().location
+
+// Module: Virtual Network
+module vnet './modules/vnet.bicep' = {
+  params: {
+    vnetName: '${prefix}-vnet'
+    location: location
+    addressPrefix: '10.0.0.0/16'
+    subnets: [
+      {
+        name: 'web-subnet'
+        addressPrefix: '10.0.1.0/24'
+      }
+      {
+        name: 'data-subnet'
+        addressPrefix: '10.0.2.0/24'
+      }
+      {
+        name: 'mgmt-subnet'
+        addressPrefix: '10.0.3.0/24'
+      }
+    ]
+  }
+}
+
+// Outputs from module
+@description('Virtual network resource ID')
+output vnetId string = vnet.outputs.vnetId
+
+@description('Virtual network name')
+output vnetName string = vnet.outputs.vnetName
+
+@description('Subnet IDs')
+output subnetIds array = vnet.outputs.subnetIds
+'@
+
+# TODO: Save the main template to 'main.bicep'
+# HINT: Use Out-File
+
+Write-Host "`n✓ Created main template: main.bicep" -ForegroundColor Green
+Write-Host "  - Uses vnet module (no 'name' property - modern Bicep syntax)" -ForegroundColor Gray
+Write-Host "  - Deploys VNet with 3 subnets" -ForegroundColor Gray
+
+#!markdown
+
+### Verification
+
+Run the following to confirm the main template references the module:
+
+#!pwsh
+
+Get-Content main.bicep | Select-String "module vnet"
+
+#!markdown
+
+## Task 9: Deploy Template with Module
+
+In this task, you'll deploy the main template, which will automatically deploy the VNet module.
+
+**Key Concept:** When you deploy a template with modules, Bicep deploys all referenced modules as separate deployments. You can see them in the deployment history.
+
+#!pwsh
+
+# TODO: Deploy the main template with module
+# HINT: Use az deployment group create with --template-file main.bicep
+# HINT: Pass prefix='biclab' as parameter
+
+Write-Host "`nDeploying VNet using module..." -ForegroundColor Yellow
+
+# TODO: Execute deployment and store in $moduleDeployment
+
+# Display outputs
+if ($moduleDeployment) {
+    Write-Host "`n✓ Module deployment successful!" -ForegroundColor Green
+    Write-Host "`nDeployment Outputs:" -ForegroundColor Cyan
+    $moduleDeployment.properties.outputs.PSObject.Properties | ForEach-Object {
+        Write-Host "  $($_.Name): $($_.Value.value)" -ForegroundColor White
+    }
+}
+
+#!markdown
+
+### Verification
+
+Run the following to confirm the VNet and subnets were created:
+
+#!pwsh
+
+# View VNet
+az network vnet show --name "biclab-vnet" --resource-group $resourceGroup --output table
+
+# View subnets
+Write-Host "`nSubnets:" -ForegroundColor Cyan
+az network vnet subnet list --vnet-name "biclab-vnet" --resource-group $resourceGroup --output table
+
+# View deployment history (should show nested deployments)
+Write-Host "`nDeployment History (notice the nested module deployment):" -ForegroundColor Cyan
+az deployment group list --resource-group $resourceGroup --output table
+
+#!markdown
+
+## Task 10: Create Bicep Parameters File
+
+In this task, you'll create a Bicep parameters file (`.bicepparam`) for environment-specific configurations.
+
+**Key Concept:** Parameters files separate configuration from code. Create separate files for dev, test, and prod environments.
+
+**Modern Approach:** Use `.bicepparam` files instead of JSON parameter files. They provide better type safety and IntelliSense.
+
+#!pwsh
+
+# Create parameters directory
+# TODO: Create a 'parameters' directory
+# HINT: Use New-Item -ItemType Directory -Force
+
+# Define dev parameters
+$devParams = @"
+using '../storage.bicep'
+
+param storageAccountName = 'stdev$(Get-Random -Maximum 999)'
+param location = 'eastus'
+param storageSku = 'Standard_LRS'
+param tags = {
+  Environment: 'Development'
+  CostCenter: 'Engineering'
+  ManagedBy: 'Bicep'
+}
+"@
+
+# Define prod parameters
+$prodParams = @"
+using '../storage.bicep'
+
+param storageAccountName = 'stprod$(Get-Random -Maximum 999)'
+param location = 'eastus'
+param storageSku = 'Standard_GRS'
+param tags = {
+  Environment: 'Production'
+  CostCenter: 'Operations'
+  ManagedBy: 'Bicep'
+}
+"@
+
+# TODO: Save dev parameters to 'parameters/dev.bicepparam'
+# HINT: Use Out-File
+
+# TODO: Save prod parameters to 'parameters/prod.bicepparam'
+# HINT: Use Out-File
+
+Write-Host "`n✓ Created parameter files" -ForegroundColor Green
+Write-Host "  - parameters/dev.bicepparam (Standard_LRS)" -ForegroundColor Gray
+Write-Host "  - parameters/prod.bicepparam (Standard_GRS)" -ForegroundColor Gray
+
+#!markdown
+
+### Verification
+
+Run the following to view the parameters files:
+
+#!pwsh
+
+Get-ChildItem parameters/*.bicepparam | Select-Object Name, Length
+
+Write-Host "`nDev Parameters:" -ForegroundColor Cyan
+Get-Content parameters/dev.bicepparam
+
+Write-Host "`nProd Parameters:" -ForegroundColor Cyan
+Get-Content parameters/prod.bicepparam
+
+#!markdown
+
+## Task 11: Deploy with Parameters File
+
+In this task, you'll deploy using a parameters file to simulate a production deployment with different configuration.
+
+#!pwsh
+
+# TODO: Deploy using the prod parameters file
+# HINT: Use az deployment group create with --parameters parameters/prod.bicepparam
+
+Write-Host "`nDeploying with production parameters..." -ForegroundColor Yellow
+
+# TODO: Execute deployment
+
+Write-Host "`n✓ Production deployment completed" -ForegroundColor Green
+
+#!markdown
+
+### Verification
+
+Run the following to confirm the production storage account was created with GRS replication:
+
+#!pwsh
+
+# List all storage accounts and show their SKU
+az storage account list --resource-group $resourceGroup --query "[].{Name:name, SKU:sku.name, Tier:sku.tier}" --output table
+
+#!markdown
+
+## Task 12: Implement Security Best Practices
+
+In this task, you'll create a template that demonstrates Bicep security best practices, including secure parameters, managed identity, and network security.
+
+**Best Practices Demonstrated:**
+- ✅ Use `@secure()` for passwords and secrets
+- ✅ Enable managed identity (no hardcoded credentials)
+- ✅ Enforce HTTPS and TLS 1.2
+- ✅ Disable public blob access
+- ✅ Implement network access controls
+- ✅ Comprehensive parameter validation
+
+#!pwsh
+
+# Define secure template
+$secureBicep = @'
+// secure-storage.bicep - Storage Account with Security Best Practices
+
+@description('Storage account name (globally unique)')
+@minLength(3)
+@maxLength(24)
+param storageAccountName string
+
+@description('Environment: dev, test, or prod')
+@allowed(['dev', 'test', 'prod'])
+param environment string
+
+@description('Azure region')
+param location string = resourceGroup().location
+
+@secure()
+@description('Admin password for securing resources (demonstrates @secure decorator)')
+param adminPassword string = newGuid()
+
+// Variables
+var storageSku = environment == 'prod' ? 'Standard_GRS' : 'Standard_LRS'
+var tags = {
+  Environment: environment
+  ManagedBy: 'Bicep'
+  SecurityLevel: 'Enhanced'
+  LastDeployed: utcNow('yyyy-MM-dd')
+}
+
+// Storage Account with Security Features
+resource storage 'Microsoft.Storage/storageAccounts@2025-01-01' = {
+  name: storageAccountName
+  location: location
+  tags: tags
+  sku: {
+    name: storageSku
+  }
+  kind: 'StorageV2'
+  identity: {
+    type: 'SystemAssigned'  // Managed identity for secure access
+  }
+  properties: {
+    // Security: Require HTTPS
+    supportsHttpsTrafficOnly: true
+    
+    // Security: Minimum TLS version
+    minimumTlsVersion: 'TLS1_2'
+    
+    // Security: Disable public blob access
+    allowBlobPublicAccess: false
+    
+    // Security: Disable shared key access (prefer Azure AD)
+    allowSharedKeyAccess: false
+    
+    // Encryption at rest
+    encryption: {
+      services: {
+        blob: {
+          enabled: true
+        }
+        file: {
+          enabled: true
+        }
+      }
+      keySource: 'Microsoft.Storage'
+    }
+    
+    // Network security: Deny by default
+    networkAcls: {
+      defaultAction: 'Allow'  // Set to 'Allow' for lab; use 'Deny' in production
+      bypass: 'AzureServices'
+      ipRules: []
+      virtualNetworkRules: []
+    }
+  }
+}
+
+// Blob service with soft delete
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2025-01-01' = {
+  parent: storage
+  name: 'default'
+  properties: {
+    deleteRetentionPolicy: {
+      enabled: true
+      days: 7
+    }
+    containerDeleteRetentionPolicy: {
+      enabled: true
+      days: 7
+    }
+  }
+}
+
+// Outputs
+@description('Storage account resource ID')
+output storageAccountId string = storage.id
+
+@description('Managed identity principal ID')
+output principalId string = storage.identity.principalId
+
+@description('Storage account name')
+output storageAccountName string = storage.name
+'@
+
+# TODO: Save the secure template to 'secure-storage.bicep'
+
+Write-Host "`n✓ Created secure template: secure-storage.bicep" -ForegroundColor Green
+Write-Host "`nSecurity Features:" -ForegroundColor Cyan
+Write-Host "  ✓ Managed identity enabled" -ForegroundColor Green
+Write-Host "  ✓ HTTPS only" -ForegroundColor Green
+Write-Host "  ✓ TLS 1.2 minimum" -ForegroundColor Green
+Write-Host "  ✓ Public blob access disabled" -ForegroundColor Green
+Write-Host "  ✓ Network access allowed for lab (set to 'Deny' in production)" -ForegroundColor Yellow
+Write-Host "  ✓ Soft delete enabled (7 days)" -ForegroundColor Green
+Write-Host "  ✓ @secure() decorator for sensitive parameters" -ForegroundColor Green
+
+#!markdown
+
+### Verification
+
+Build the template to verify syntax:
+
+#!pwsh
+
+az bicep build --file secure-storage.bicep
+Write-Host "`n✓ Template builds successfully" -ForegroundColor Green
+
+#!markdown
+
+## Task 13 (Bonus): Deploy Multi-Tier Infrastructure
+
+In this bonus task, you'll create a complete multi-tier infrastructure with storage, networking, and demonstrate module composition.
+
+**Scenario:** Deploy a full application infrastructure with:
+- Virtual Network with multiple subnets
+- Storage account for application data
+- Network Security Groups for each subnet
+- All connected and configured properly
+
+#!pwsh
+
+# Create an NSG module
+$nsgModule = @'
+// nsg.bicep - Network Security Group Module
+
+@description('NSG name')
+param nsgName string
+
+@description('Azure region')
+param location string
+
+@description('Security rules')
+param securityRules array = []
+
+resource nsg 'Microsoft.Network/networkSecurityGroups@2024-07-01' = {
+  name: nsgName
+  location: location
+  properties: {
+    securityRules: securityRules
+  }
+}
+
+output nsgId string = nsg.id
+'@
+
+# TODO: Save NSG module to 'modules/nsg.bicep'
+
+# Create comprehensive main template
+$comprehensiveBicep = @'
+// comprehensive.bicep - Multi-tier Infrastructure
+
+@description('Project name prefix')
+param projectName string = 'myapp'
+
+@description('Azure region')
+param location string = resourceGroup().location
+
+@description('Environment')
+@allowed(['dev', 'test', 'prod'])
+param environment string = 'dev'
+
+// Variables
+var tags = {
+  Project: projectName
+  Environment: environment
+  ManagedBy: 'Bicep'
+}
+
+// Module: Virtual Network
+module vnet './modules/vnet.bicep' = {
+  params: {
+    vnetName: '${projectName}-${environment}-vnet'
+    location: location
+    addressPrefix: '10.0.0.0/16'
+    subnets: [
+      {
+        name: 'web-subnet'
+        addressPrefix: '10.0.1.0/24'
+      }
+      {
+        name: 'app-subnet'
+        addressPrefix: '10.0.2.0/24'
+      }
+      {
+        name: 'data-subnet'
+        addressPrefix: '10.0.3.0/24'
+      }
+    ]
+  }
+}
+
+// Module: Web NSG
+module webNsg './modules/nsg.bicep' = {
+  params: {
+    nsgName: '${projectName}-${environment}-web-nsg'
+    location: location
+    securityRules: [
+      {
+        name: 'AllowHTTPS'
+        properties: {
+          priority: 100
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: '*'
+          destinationAddressPrefix: '*'
+        }
+      }
+    ]
+  }
+}
+
+// Module: App NSG
+module appNsg './modules/nsg.bicep' = {
+  params: {
+    nsgName: '${projectName}-${environment}-app-nsg'
+    location: location
+    securityRules: [
+      {
+        name: 'AllowFromWeb'
+        properties: {
+          priority: 100
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '8080'
+          sourceAddressPrefix: '10.0.1.0/24'
+          destinationAddressPrefix: '*'
+        }
+      }
+    ]
+  }
+}
+
+// Storage account for application
+resource appStorage 'Microsoft.Storage/storageAccounts@2025-01-01' = {
+  name: '${projectName}${environment}${uniqueString(resourceGroup().id)}'
+  location: location
+  tags: tags
+  sku: {
+    name: environment == 'prod' ? 'Standard_GRS' : 'Standard_LRS'
+  }
+  kind: 'StorageV2'
+  properties: {
+    accessTier: 'Hot'
+    supportsHttpsTrafficOnly: true
+    minimumTlsVersion: 'TLS1_2'
+  }
+}
+
+// Outputs
+output vnetId string = vnet.outputs.vnetId
+output vnetName string = vnet.outputs.vnetName
+output storageAccountName string = appStorage.name
+output webNsgId string = webNsg.outputs.nsgId
+output appNsgId string = appNsg.outputs.nsgId
+'@
+
+# TODO: Save comprehensive template
+
+Write-Host "`n✓ Created comprehensive infrastructure template" -ForegroundColor Green
+Write-Host "  - VNet with 3 subnets (web, app, data)" -ForegroundColor Gray
+Write-Host "  - 2 NSGs with security rules" -ForegroundColor Gray
+Write-Host "  - Storage account with environment-specific SKU" -ForegroundColor Gray
+Write-Host "  - Uses modern module syntax (no 'name' property)" -ForegroundColor Gray
+
+#!markdown
+
+### Verification
+
+Deploy the comprehensive template (optional - this will create several resources):
+
+#!pwsh
+
+# Uncomment to deploy the comprehensive infrastructure
+# Write-Host "Deploying comprehensive infrastructure..." -ForegroundColor Yellow
+# az deployment group create `
+#     --resource-group $resourceGroup `
+#     --template-file comprehensive.bicep `
+#     --parameters projectName='myapp' environment='dev'
+
+Write-Host "`n✓ Comprehensive template created (deployment optional)" -ForegroundColor Green
+
+#!markdown
+
+## Lab Summary
+
+Congratulations! You've completed Lab 08: Infrastructure as Code with Bicep. In this lab, you:
+
+### ✅ Completed Tasks
+
+- [x] Installed and configured Bicep CLI
+- [x] Created basic Bicep templates with parameters, variables, and outputs
+- [x] Used parameter decorators for validation (@minLength, @maxLength, @allowed)
+- [x] Built and validated Bicep templates
+- [x] Deployed resources using Bicep templates
+- [x] Used what-if to preview changes before deployment
+- [x] Created reusable Bicep modules (VNet, NSG)
+- [x] Created Bicep parameters files for environment-specific configurations
+- [x] Implemented security best practices (managed identity, HTTPS, network security)
+- [x] (Bonus) Designed multi-tier infrastructure with module composition
+
+### 🔑 Key Concepts Learned
+
+1. **Bicep Basics**: Domain-specific language that compiles to ARM templates
+2. **Template Structure**: Parameters, variables, resources, outputs
+3. **Parameter Decorators**: `@description()`, `@minLength()`, `@allowed()`, `@secure()`
+4. **Deployment Validation**: Build → Validate → What-if → Deploy workflow
+5. **Modules**: Reusable Bicep files for code organization and reuse (modern syntax without 'name' property)
+6. **Parameters Files**: Environment-specific configurations (.bicepparam)
+7. **Security Best Practices**: Managed identity, HTTPS, TLS 1.2, network ACLs
+8. **Infrastructure as Code**: Version control, repeatability, consistency
+9. **Safe Dereference**: Using `.?` operator to safely access potentially null properties
+
+### 📊 Bicep vs. ARM Templates
+
+| Feature | Bicep | ARM Templates (JSON) |
+|---------|-------|---------------------|
+| **Syntax** | Clean, concise | Verbose, complex |
+| **Lines of code** | 50-70% less | Baseline |
+| **IntelliSense** | Full support | Limited |
+| **Validation** | Strong type checking | Basic |
+| **Modules** | Native support | Nested templates |
+| **Learning curve** | Gentle | Steep |
+
+### 🎯 Best Practices Applied
+
+- ✅ Used `@description()` for all parameters
+- ✅ Implemented parameter validation with decorators
+- ✅ Used `@secure()` for sensitive data
+- ✅ Enabled managed identity (no hardcoded credentials)
+- ✅ Created reusable modules with modern syntax (no 'name' property)
+- ✅ Used parameters files for environment separation
+- ✅ Validated templates before deployment
+- ✅ Previewed changes with what-if
+- ✅ Implemented security defaults (HTTPS, TLS 1.2)
+- ✅ Used safe dereference operator (`.?`) for null-safe property access
+
+### 📚 Additional Resources
+
+- [Bicep documentation](https://learn.microsoft.com/azure/azure-resource-manager/bicep/)
+- [Bicep learning path](https://learn.microsoft.com/training/paths/fundamentals-bicep/)
+- [Azure Verified Modules (AVM)](https://aka.ms/AVM)
+- [Bicep playground](https://aka.ms/bicepdemo)
+- [Bicep samples repository](https://github.com/Azure/bicep)
+
+### 🧹 Clean Up Resources
+
+To avoid Azure charges, delete the resource group when you're done:
+
+```powershell
+az group delete --name $resourceGroup --yes --no-wait
+```
+
+This will delete all resources created in this lab:
+- Storage accounts
+- Virtual networks
+- Network Security Groups
+- All deployments
+
+### ➡️ Next Steps
+
+Continue to **Module 09** to learn about:
+- Template Specs for versioned template management
+- Deployment Stacks for resource lifecycle management
+- CI/CD integration with GitHub Actions and Azure DevOps
+
+### 🐛 Troubleshooting
+
+**Issue:** `az bicep` command not found
+- **Solution:** Run `az bicep install` to install Bicep CLI
+
+**Issue:** Template validation fails with "resource type not found"
+- **Solution:** Check API version in resource declaration
+- **Solution:** Ensure latest Azure CLI is installed (`az upgrade`)
+
+**Issue:** Deployment fails with "name already exists"
+- **Solution:** Storage account names must be globally unique
+- **Solution:** Add `${uniqueString(resourceGroup().id)}` to name
+
+**Issue:** What-if shows no changes when you expect changes
+- **Solution:** Verify parameter values are actually different
+- **Solution:** Check that you're targeting the correct resource group
+
+**Issue:** Module not found error
+- **Solution:** Verify module path is correct (relative to main template)
+- **Solution:** Ensure module file exists in specified location
+
+**Issue:** "NetworkAcls" prevents access to storage
+- **Solution:** For testing, the lab uses `defaultAction: 'Allow'` 
+- **Production:** Change to `defaultAction: 'Deny'` and add specific IP rules
+- **Add your IP:** Include your IP address in `ipRules` array for secure access
+
+**Issue:** Module deployment shows "name is no longer required" warning
+- **Solution:** This lab uses modern Bicep syntax without the `name` property on modules
+- **Old syntax:** `module foo 'file.bicep' = { name: 'fooDeployment' ... }`
+- **New syntax:** `module foo 'file.bicep' = { params: { ... } }`
+
+### 💡 Tips for Production
+
+1. **Always validate before deploying to production:**
+   ```bash
+   az deployment group validate --template-file main.bicep
+   az deployment group what-if --template-file main.bicep
+   ```
+
+2. **Use deployment naming for tracking:**
+   ```bash
+   az deployment group create --name "v1.2.0-$(date +%Y%m%d)" ...
+   ```
+
+3. **Store Bicep files in Git for version control**
+
+4. **Use CI/CD pipelines for automated deployments**
+
+5. **Test in non-production environments first**
+
+6. **Document breaking changes in comments**
+
+7. **Use semantic versioning for modules (v1.0.0, v1.1.0, etc.)**
+
+8. **Never commit secrets to source control - use Key Vault references**
